@@ -28,7 +28,7 @@ class SynthesisResult {
 /// - Verifica caché local ANTES de llamar a la API
 /// - Rate limiting: máximo 1 solicitud concurrente
 /// - Retry automático con exponential backoff (hasta 3 intentos)
-/// - Detección automática de idioma con langdetect
+/// - Detección automática de idioma con heurística de caracteres
 /// - Manejo tipado de errores (429, 403, red, etc.)
 class TtsRemoteDatasource {
   final Dio _dio;

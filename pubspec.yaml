@@ -46,8 +46,6 @@ dependencies:
   # Reactive extensions (debounce en ReaderBloc)
   rxdart: ^0.27.7
 
-  # Language detection
-  langdetect: ^0.1.1+1
 
   # UI
   google_fonts: ^6.2.1
