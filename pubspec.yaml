@@ -19,7 +19,7 @@ dependencies:
   go_router: ^14.2.7
 
   # Book parsing
-  epub_view: ^4.3.2
+  epub_view: ^3.2.0
   pdfx: ^2.6.0
 
   # Audio
