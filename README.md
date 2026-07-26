@@ -157,7 +157,7 @@ lib/
 | `audio_service` | 0.18.15 | Foreground Service + media controls |
 | `just_audio` | 0.9.40 | Reproducción de MP3 |
 | `audio_session` | 0.1.21 | Audio Focus management |
-| `epub_view` | 4.3.2 | Visor EPUB nativo |
+| `epub_view` | 3.2.0 | Visor EPUB nativo |
 | `pdfx` | 2.6.0 | Renderizado PDF con PDFium |
 | `flutter_bloc` | 8.1.6 | State management |
 | `dio` | 5.7.0 | Cliente HTTP para TTS API |
