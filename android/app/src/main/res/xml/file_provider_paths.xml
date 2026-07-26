@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Caché de audio generado por TTS -->
+    <cache-path name="audio_cache" path="audio_cache/" />
+
+    <!-- Archivos de la app -->
+    <files-path name="app_files" path="." />
+
+    <!-- Almacenamiento externo (para compartir) -->
+    <external-path name="external_files" path="." />
+</paths>
