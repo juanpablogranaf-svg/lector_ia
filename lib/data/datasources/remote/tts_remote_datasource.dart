@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:lector_ia/core/constants/api_constants.dart';
 import 'package:lector_ia/core/constants/app_constants.dart';
 import 'package:lector_ia/core/errors/failures.dart';
