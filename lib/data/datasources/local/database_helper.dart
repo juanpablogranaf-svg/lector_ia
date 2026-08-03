@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../../core/constants/app_constants.dart';
+import 'package:lector_ia/core/constants/app_constants.dart';
 
 /// Schema y singleton de la base de datos SQLite.
 class DatabaseHelper {

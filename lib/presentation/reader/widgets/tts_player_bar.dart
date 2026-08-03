@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/reader_bloc.dart';
@@ -307,4 +308,4 @@ class _SpeedButton extends StatelessWidget {
   }
 }
 
-import 'dart:ui';
+
