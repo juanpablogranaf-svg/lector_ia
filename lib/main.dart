@@ -23,7 +23,7 @@ Future<void> main() async {
       androidNotificationIcon: 'drawable/ic_notification',
       androidShowNotificationBadge: true,
       notificationColor: Color(0xFF1A1A2E),
-      androidStopForegroundOnPause: false,
+      androidStopForegroundOnPause: true,
     ),
   );
 
