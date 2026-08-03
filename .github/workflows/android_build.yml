@@ -99,31 +99,32 @@ jobs:
       - name: 🩺 Flutter Doctor
         run: flutter doctor -v
 
-      # ── 4.1. Generar archivos Android nativos faltantes ────────────────────
-      - name: 🛠️ Generar archivos Android base (Gradle, wrappers, Kotlin shell)
+      # ── 4.1. Generar archivos Android nativos base (si no existen) ──────────
+      - name: 🛠️ Asegurar estructura de Android base
         run: |
-          # 1. Crear copia de seguridad temporal de nuestros archivos personalizados
-          mkdir -p /tmp/android_custom
-          cp android/build.gradle /tmp/android_custom/root_build.gradle
-          cp android/app/build.gradle /tmp/android_custom/app_build.gradle
-          cp android/settings.gradle /tmp/android_custom/settings.gradle || true
-          cp android/app/src/main/AndroidManifest.xml /tmp/android_custom/AndroidManifest.xml
-          cp android/app/src/main/res/xml/file_provider_paths.xml /tmp/android_custom/file_provider_paths.xml
-          cp pubspec.yaml /tmp/android_custom/pubspec.yaml
-          cp -r lib /tmp/android_custom/lib
-
-          # 2. Ejecutar flutter create para generar la estructura completa faltante
-          flutter create --org com.lector.ia --project-name lector_ia --platforms android .
-
-          # 3. Restaurar nuestros archivos personalizados sobrescribiendo los por defecto
-          cp /tmp/android_custom/root_build.gradle android/build.gradle
-          cp /tmp/android_custom/app_build.gradle android/app/build.gradle
-          if [ -f /tmp/android_custom/settings.gradle ]; then cp /tmp/android_custom/settings.gradle android/settings.gradle; fi
-          cp /tmp/android_custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          cp /tmp/android_custom/file_provider_paths.xml android/app/src/main/res/xml/file_provider_paths.xml
-          cp /tmp/android_custom/pubspec.yaml pubspec.yaml
-          rm -rf lib
-          cp -r /tmp/android_custom/lib lib
+          # Solo ejecutamos flutter create si falta algún archivo crítico nativo
+          if [ ! -f "android/settings.gradle" ] || [ ! -d "android/app/src/main/kotlin" ]; then
+            echo "Estructura nativa incompleta, regenerando con flutter create..."
+            mkdir -p /tmp/android_custom
+            cp android/build.gradle /tmp/android_custom/root_build.gradle
+            cp android/app/build.gradle /tmp/android_custom/app_build.gradle
+            cp android/app/src/main/AndroidManifest.xml /tmp/android_custom/AndroidManifest.xml
+            cp android/app/src/main/res/xml/file_provider_paths.xml /tmp/android_custom/file_provider_paths.xml
+            cp pubspec.yaml /tmp/android_custom/pubspec.yaml
+            cp -r lib /tmp/android_custom/lib
+            
+            flutter create --org com.lector.ia --project-name lector_ia --platforms android .
+            
+            cp /tmp/android_custom/root_build.gradle android/build.gradle
+            cp /tmp/android_custom/app_build.gradle android/app/build.gradle
+            cp /tmp/android_custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+            cp /tmp/android_custom/file_provider_paths.xml android/app/src/main/res/xml/file_provider_paths.xml
+            cp /tmp/android_custom/pubspec.yaml pubspec.yaml
+            rm -rf lib
+            cp -r /tmp/android_custom/lib lib
+          else
+            echo "La carpeta android ya está configurada correctamente en el repositorio."
+          fi
 
       # ── 5. Dependencias con caché ───────────────────────────────────────────
       - name: 📦 Instalar dependencias de Flutter
