@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
@@ -317,9 +318,3 @@ class _PendingRequest {
   Completer<List<int>> get completer => _completerInstance;
 }
 
-// Importación faltante
-import 'dart:async';
-void debugPrint(String msg) {
-  // ignore: avoid_print
-  print(msg);
-}

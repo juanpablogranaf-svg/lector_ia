@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io' as dart_io;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:rxdart/rxdart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audio_service/audio_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
@@ -13,7 +16,6 @@ import '../../../data/datasources/remote/tts_remote_datasource.dart';
 import '../../../data/models/book_model.dart';
 import '../../../data/models/reading_progress_model.dart';
 import '../../../services/audio_service/background_audio_handler.dart';
-import 'package:audio_service/audio_service.dart';
 import '../../../main.dart' show audioHandler;
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -434,6 +436,3 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
   }
 }
 
-// Imports faltantes
-import 'dart:io' as dart_io;
-import 'package:rxdart/rxdart.dart';

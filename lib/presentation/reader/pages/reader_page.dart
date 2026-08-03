@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:epub_view/epub_view.dart';
@@ -276,4 +277,3 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 }
 
-import 'dart:io';
