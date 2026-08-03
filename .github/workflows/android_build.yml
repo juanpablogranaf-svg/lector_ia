@@ -106,6 +106,7 @@ jobs:
           mkdir -p /tmp/android_custom
           cp android/build.gradle /tmp/android_custom/root_build.gradle
           cp android/app/build.gradle /tmp/android_custom/app_build.gradle
+          cp android/settings.gradle /tmp/android_custom/settings.gradle || true
           cp android/app/src/main/AndroidManifest.xml /tmp/android_custom/AndroidManifest.xml
           cp android/app/src/main/res/xml/file_provider_paths.xml /tmp/android_custom/file_provider_paths.xml
           cp pubspec.yaml /tmp/android_custom/pubspec.yaml
@@ -117,6 +118,7 @@ jobs:
           # 3. Restaurar nuestros archivos personalizados sobrescribiendo los por defecto
           cp /tmp/android_custom/root_build.gradle android/build.gradle
           cp /tmp/android_custom/app_build.gradle android/app/build.gradle
+          if [ -f /tmp/android_custom/settings.gradle ]; then cp /tmp/android_custom/settings.gradle android/settings.gradle; fi
           cp /tmp/android_custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           cp /tmp/android_custom/file_provider_paths.xml android/app/src/main/res/xml/file_provider_paths.xml
           cp /tmp/android_custom/pubspec.yaml pubspec.yaml
