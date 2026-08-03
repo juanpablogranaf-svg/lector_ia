@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:epub_view/epub_view.dart';
-import 'package:pdfx/pdfx.dart';
+import 'package:pdfx/pdfx.dart' as pdfx;
 import '../bloc/reader_bloc.dart';
 import '../../../core/theme/app_theme.dart';
 import '../widgets/tts_player_bar.dart';
@@ -17,7 +17,7 @@ class ReaderPage extends StatefulWidget {
 
 class _ReaderPageState extends State<ReaderPage> {
   EpubController? _epubController;
-  PdfController? _pdfController;
+  pdfx.PdfController? _pdfController;
   final _scrollController = ScrollController();
   bool _showControls = true;
 
@@ -117,8 +117,8 @@ class _ReaderPageState extends State<ReaderPage> {
         epubCfi: null, // Restaurar CFI guardado si existe
       );
     } else if (book.fileType == 'pdf') {
-      _pdfController = PdfController(
-        document: PdfDocument.openFile(book.filePath),
+      _pdfController = pdfx.PdfController(
+        document: pdfx.PdfDocument.openFile(book.filePath),
         initialPage: state.progress?.pageNumber ?? 0,
       );
     }
@@ -148,7 +148,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
       case 'pdf':
         if (_pdfController == null) return const SizedBox.shrink();
-        return PdfView(
+        return pdfx.PdfView(
           controller: _pdfController!,
           onPageChanged: (page) => context.read<ReaderBloc>().add(
             ReaderScrollPositionChanged(

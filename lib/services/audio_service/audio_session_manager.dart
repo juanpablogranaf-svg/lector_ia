@@ -12,7 +12,7 @@ import 'package:audio_session/audio_session.dart';
 class AudioSessionManager {
   AudioSession? _session;
   StreamSubscription<AudioInterruptionEvent>? _interruptionSubscription;
-  StreamSubscription<bool>? _becomingNoisySubscription;
+  StreamSubscription<void>? _becomingNoisySubscription;
 
   // Callbacks para notificar al handler
   VoidCallback? onPause;

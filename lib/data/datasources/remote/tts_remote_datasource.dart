@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
-import '../../core/constants/api_constants.dart';
-import '../../core/constants/app_constants.dart';
-import '../../core/errors/failures.dart';
-import '../../core/utils/audio_cache_manager.dart';
-import '../../core/utils/text_chunker.dart';
+import 'package:lector_ia/core/constants/api_constants.dart';
+import 'package:lector_ia/core/constants/app_constants.dart';
+import 'package:lector_ia/core/errors/failures.dart';
+import 'package:lector_ia/core/utils/audio_cache_manager.dart';
+import 'package:lector_ia/core/utils/text_chunker.dart';
 
 /// Resultado de una síntesis de audio
 class SynthesisResult {
