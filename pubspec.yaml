@@ -20,7 +20,7 @@ dependencies:
 
   # Book parsing
   epub_view: ^3.2.0
-  pdfrx: ^2.4.7
+  pdfrx: 1.0.101
 
   # Audio
   audio_service: ^0.18.15
