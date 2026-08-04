@@ -60,6 +60,10 @@ android {
             debuggable true
         }
     }
+configurations.all {
+    resolutionStrategy {
+        force "androidx.preference:preference:1.2.1"
+    }
 }
 
 flutter {
