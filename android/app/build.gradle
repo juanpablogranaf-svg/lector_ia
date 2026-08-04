@@ -60,6 +60,8 @@ android {
             debuggable true
         }
     }
+}
+
 configurations.all {
     resolutionStrategy {
         force "androidx.preference:preference:1.2.1"
@@ -72,12 +74,12 @@ flutter {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    
+
     // Soporte multidex para Android < 5.0
     implementation 'androidx.multidex:multidex:2.0.1'
-    
+
     // Media3 / ExoPlayer (usado internamente por just_audio)
     implementation 'androidx.media3:media3-exoplayer:1.3.1'
     implementation 'androidx.media3:media3-session:1.3.1'
-    
+
 }
