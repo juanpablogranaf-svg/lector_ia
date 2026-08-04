@@ -33,7 +33,7 @@ class _ReaderPageState extends State<ReaderPage> {
   void dispose() {
     _scrollController.dispose();
     _epubController?.dispose();
-    _pdfController?.dispose();
+
     context.read<ReaderBloc>().add(const ReaderClosed());
     super.dispose();
   }
@@ -150,17 +150,17 @@ class _ReaderPageState extends State<ReaderPage> {
           book.filePath,
           controller: _pdfController,
           initialPageNumber: state.progress?.pageNumber != null ? state.progress!.pageNumber + 1 : 1,
-          onPageChanged: (page) {
-            if (page != null) {
-              final pageCount = _pdfController?.pageCount ?? 1;
-              context.read<ReaderBloc>().add(
-                ReaderScrollPositionChanged(
-                  page / pageCount,
-                  page - 1,
-                ),
-              );
-            }
-          },
+            onPageChanged: (pageNumber) {
+              if (pageNumber != null) {
+                final pageCount = _pdfController?.pageCount ?? 1;
+                context.read<ReaderBloc>().add(
+                  ReaderScrollPositionChanged(
+                    pageNumber / pageCount,
+                    pageNumber - 1,
+                  ),
+                );
+              }
+            },
         );
 
       case 'txt':
