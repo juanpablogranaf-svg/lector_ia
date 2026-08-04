@@ -149,7 +149,7 @@ class _ReaderPageState extends State<ReaderPage> {
         return pdfrx.PdfViewer.file(
           book.filePath,
           controller: _pdfController,
-          initialPageNumber: state.progress?.pageNumber != null ? state.progress!.pageNumber + 1 : 1,
+          params: pdfrx.PdfViewerParams(
             onPageChanged: (pageNumber) {
               if (pageNumber != null) {
                 final pageCount = _pdfController?.pageCount ?? 1;
@@ -161,6 +161,8 @@ class _ReaderPageState extends State<ReaderPage> {
                 );
               }
             },
+          ),
+          initialPageNumber: state.progress?.pageNumber != null ? state.progress!.pageNumber + 1 : 1,
         );
 
       case 'txt':
