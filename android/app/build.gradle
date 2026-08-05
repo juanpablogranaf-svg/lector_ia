@@ -27,7 +27,7 @@ apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.lector.ia"
-    compileSdk 34
+    compileSdk 35
     ndkVersion = "25.1.8937393"
 
     compileOptions {
@@ -42,7 +42,7 @@ android {
     defaultConfig {
         applicationId "com.lector.ia"
         minSdk 24              // Android 7.0 mínimo (para audio_service)
-        targetSdk 34
+        targetSdk 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true

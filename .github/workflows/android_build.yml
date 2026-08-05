@@ -80,6 +80,8 @@ jobs:
       - name: 🧹 Clean Gradle caches
         run: |
           rm -rf ~/.gradle/caches ~/.gradle/wrapper android/.gradle
+      - name: 🧹 Clean project before build
+        run: ./gradlew clean
 
       # ── 2. Java 17 (requerido por AGP 8.x) ─────────────────────────────────
       - name: ☕ Configurar Java 17
