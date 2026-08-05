@@ -30,13 +30,3 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-
-// Global resolution strategy for AndroidX conflicts
-subprojects {
-    project.configurations.all {
-        resolutionStrategy {
-            force 'androidx.preference:preference:1.2.1'
-            force 'androidx.core:core-ktx:1.12.0'
-        }
-    }
-}
