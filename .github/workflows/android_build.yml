@@ -134,6 +134,10 @@ jobs:
           rm -rf /tmp/android_custom
 
       # ── 5. Dependencias con caché ───────────────────────────────────────────
+      - name: 📥 Install Android SDK 35
+        run: |
+          echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: 📦 Instalar dependencias de Flutter
         run: |
           flutter pub upgrade
