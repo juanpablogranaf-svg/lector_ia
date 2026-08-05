@@ -23,6 +23,11 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(':app')
+    afterEvaluate { proj ->
+        if (proj.name == 'shared_preferences_android') {
+            proj.apply plugin: 'com.android.library'
+        }
+    }
 }
 
 tasks.register("clean", Delete) {
