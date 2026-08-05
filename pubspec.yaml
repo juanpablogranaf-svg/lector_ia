@@ -67,5 +67,4 @@ flutter:
     - assets/icons/
     - assets/animations/
 
-dependency_overrides:
-  shared_preferences_android: ^2.2.0
+
