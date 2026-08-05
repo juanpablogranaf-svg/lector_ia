@@ -24,21 +24,6 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(':app')
 }
-
-
-    repositories {
-        google()
-        mavenCentral()
-    }
-    android {
-        compileSdk 35
-        defaultConfig {
-            minSdk 21
-            targetSdk 35
-        }
-    }
-    // No additional dependencies needed; rely on transitive Flutter plugin AARs
-}
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
