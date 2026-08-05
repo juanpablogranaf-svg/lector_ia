@@ -27,6 +27,9 @@ subprojects {
 
 project(':shared_preferences_android') {
     apply plugin: 'com.android.library'
+    android {
+        compileSdk 34
+    }
 }
 
 tasks.register("clean", Delete) {
