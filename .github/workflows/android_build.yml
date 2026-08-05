@@ -105,33 +105,7 @@ jobs:
       - name: 🩺 Flutter Doctor
         run: flutter doctor -v
 
-      # ── 4.1. Generar archivos Android nativos base
-      - name: 🛠️ Asegurar estructura de Android base
-        run: |
-          echo "Regenerando recursos base con flutter create..."
-          mkdir -p /tmp/android_custom
-          [ -f android/build.gradle ] && cp android/build.gradle /tmp/android_custom/root_build.gradle || true
-          [ -f android/app/build.gradle ] && cp android/app/build.gradle /tmp/android_custom/app_build.gradle || true
-          [ -f android/app/src/main/AndroidManifest.xml ] && cp android/app/src/main/AndroidManifest.xml /tmp/android_custom/AndroidManifest.xml || true
-          [ -f android/app/src/main/res/xml/file_provider_paths.xml ] && cp android/app/src/main/res/xml/file_provider_paths.xml /tmp/android_custom/file_provider_paths.xml || true
-          [ -f pubspec.yaml ] && cp pubspec.yaml /tmp/android_custom/pubspec.yaml || true
-          cp -r lib /tmp/android_custom/lib
-          
-          # Borrar carpeta android para forzar regeneración limpia de todos los recursos (values, mipmaps, etc.)
-          rm -rf android
-          
-          flutter create --org com.lector.ia --project-name lector_ia --platforms android .
-          
-          # Restaurar los archivos modificados
-          [ -f /tmp/android_custom/root_build.gradle ] && cp /tmp/android_custom/root_build.gradle android/build.gradle || true
-          [ -f /tmp/android_custom/app_build.gradle ] && cp /tmp/android_custom/app_build.gradle android/app/build.gradle || true
-          [ -f /tmp/android_custom/AndroidManifest.xml ] && cp /tmp/android_custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml || true
-          mkdir -p android/app/src/main/res/xml
-          [ -f /tmp/android_custom/file_provider_paths.xml ] && cp /tmp/android_custom/file_provider_paths.xml android/app/src/main/res/xml/file_provider_paths.xml || true
-          [ -f /tmp/android_custom/pubspec.yaml ] && cp /tmp/android_custom/pubspec.yaml pubspec.yaml || true
-          rm -rf lib
-          cp -r /tmp/android_custom/lib lib
-          rm -rf /tmp/android_custom
+
 
       # ── 5. Dependencias con caché ───────────────────────────────────────────
       - name: 🧹 Uninstall Android SDK 35 platform
