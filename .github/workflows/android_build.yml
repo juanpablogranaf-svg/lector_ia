@@ -50,8 +50,7 @@ jobs:
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
-          cache: true
-          cache-key: 'flutter-${{ runner.os }}-3.24.0'
+          cache: false
 
       - name: 📦 Instalar dependencias
         run: flutter pub get
@@ -85,11 +84,12 @@ jobs:
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
-          cache: true
-          cache-key: 'flutter-${{ runner.os }}-3.24.0'
 
-      - name: 🧹 Clean project before build
+      - name: 🧹 Clean project
         run: flutter clean
+
+      - name: 📦 Instalar dependencias exactas
+        run: flutter pub get
 
       # ── 2. Java 17 (requerido por AGP 8.x) ─────────────────────────────────
       - name: ☕ Configurar Java 17
@@ -120,11 +120,6 @@ jobs:
       - name: 📥 Install Android SDK 34
         run: |
           echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
-
-      - name: 📦 Instalar dependencias de Flutter
-        run: |
-          flutter pub upgrade
-          flutter pub get
 
 
 
