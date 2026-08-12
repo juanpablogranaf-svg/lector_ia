@@ -17,21 +17,14 @@ class BookLocalDatasource {
   // ─── Permisos ────────────────────────────────────────────────────────────────
 
   Future<bool> requestStoragePermission() async {
-    // Android 13+ usa READ_MEDIA_*
-    if (await _isAndroid13OrAbove()) {
-      final status = await Permission.photos.request();
-      return status.isGranted;
-    } else {
-      final status = await Permission.storage.request();
-      return status.isGranted;
+    // Para Android 11+ (API 30+) requerimos MANAGE_EXTERNAL_STORAGE para indexación completa.
+    // Usamos Permission.manageExternalStorage.
+    if (await Permission.manageExternalStorage.request().isGranted) {
+      return true;
     }
-  }
-
-  Future<bool> _isAndroid13OrAbove() async {
-    // Heurística: si el path /storage/emulated/0 existe, es Android < 13 con acceso legacy
-    // En Android 13+ los permisos son granulares. Para lectura de docs usamos MANAGE_EXTERNAL_STORAGE
-    // o el picker. Simplificamos a storage permission.
-    return false; // Ajustar según versión real en runtime
+    // Backup para versiones anteriores o si no se concede pero se concedió el clásico
+    final status = await Permission.storage.request();
+    return status.isGranted;
   }
 
   // ─── Escaneo de Archivos ─────────────────────────────────────────────────────
@@ -88,7 +81,7 @@ class BookLocalDatasource {
           if (entity is Directory) {
             queue.add(entity);
           } else if (entity is File) {
-            final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
+            final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '').trim();
             if (!AppConstants.supportedExtensions.contains(ext)) continue;
 
             try {

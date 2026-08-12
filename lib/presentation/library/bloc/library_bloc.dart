@@ -40,6 +40,12 @@ class LibrarySortChanged extends LibraryEvent {
   @override List<Object?> get props => [sortBy];
 }
 
+class LibraryBookImported extends LibraryEvent {
+  final BookModel book;
+  const LibraryBookImported(this.book);
+  @override List<Object?> get props => [book];
+}
+
 enum LibrarySortBy { recentlyAdded, lastOpened, title, author }
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -117,13 +123,23 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
     on<LibraryThemeToggled>(_onThemeToggled);
     on<LibraryBookDeleted>(_onBookDeleted);
     on<LibrarySortChanged>(_onSortChanged);
+    on<LibraryBookImported>(_onBookImported);
   }
 
   Future<void> _onScanStarted(LibraryScanStarted event, Emitter<LibraryState> emit) async {
-    // Primero cargar libros de la DB
     emit(state.copyWith(status: LibraryStatus.scanning));
 
     try {
+      // Solicitar permisos en tiempo de ejecución
+      final hasPermission = await _bookDatasource.requestStoragePermission();
+      if (!hasPermission) {
+        emit(state.copyWith(
+          status: LibraryStatus.error,
+          errorMessage: 'Permiso de almacenamiento denegado. Concede el acceso para escanear libros.',
+        ));
+        return;
+      }
+
       final existingBooks = await _bookDatasource.getAllBooks();
       emit(state.copyWith(books: existingBooks, filteredBooks: existingBooks));
 
@@ -199,6 +215,30 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
       sortBy: event.sortBy,
       filteredBooks: _applySort(state.filteredBooks, event.sortBy),
     ));
+  }
+
+  Future<void> _onBookImported(LibraryBookImported event, Emitter<LibraryState> emit) async {
+    try {
+      final exists = await _bookDatasource.bookExists(event.book.filePath);
+      if (!exists) {
+        await _bookDatasource.insertBook(event.book);
+      }
+      final allBooks = await _bookDatasource.getAllBooks();
+      final progressMap = Map<String, ReadingProgressModel>.from(state.progressMap);
+      if (!progressMap.containsKey(event.book.id)) {
+        progressMap[event.book.id] = await _progressDatasource.getProgress(event.book.id);
+      }
+      emit(state.copyWith(
+        books: allBooks,
+        filteredBooks: _applySort(allBooks, state.sortBy),
+        progressMap: progressMap,
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        status: LibraryStatus.error,
+        errorMessage: 'Error al importar libro: ${e.toString()}',
+      ));
+    }
   }
 
   List<BookModel> _applySort(List<BookModel> books, LibrarySortBy sortBy) {

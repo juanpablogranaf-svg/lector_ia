@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:file_picker/file_picker.dart' as file_picker;
+import '../../../data/models/book_model.dart';
 import '../bloc/library_bloc.dart';
 import '../widgets/book_card.dart';
 import '../widgets/scan_progress_indicator.dart';
@@ -59,7 +62,49 @@ class _LibraryPageState extends State<LibraryPage> with TickerProviderStateMixin
           },
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _pickAndImportFile(context),
+        tooltip: 'Añadir archivo',
+        child: const Icon(Icons.add),
+      ),
     );
+  }
+
+  Future<void> _pickAndImportFile(BuildContext context) async {
+    try {
+      // Necesitamos importar file_picker
+      final result = await file_picker.FilePicker.platform.pickFiles(
+        type: file_picker.FileType.custom,
+        allowedExtensions: ['pdf', 'epub', 'txt'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        final file = File(filePath);
+        final stat = await file.stat();
+        final ext = filePath.split('.').last.toLowerCase();
+        
+        final book = BookModel.fromFile(file, stat, ext);
+        if (context.mounted) {
+          context.read<LibraryBloc>().add(LibraryBookImported(book));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Libro "${book.title}" añadido con éxito.'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar archivo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   SliverAppBar _buildAppBar(BuildContext context, ColorScheme cs, bool innerBoxIsScrolled) {
