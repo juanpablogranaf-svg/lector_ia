@@ -134,7 +134,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   /// Extrae el texto plano del capítulo EPUB y lo envía al Bloc.
-  void _extractAndSendEpubText(EpubChapterViewValue value) {
+  void _extractAndSendEpubText(dynamic value) {
     // Obtener el texto plano del capítulo EPUB visible actual
     final chapter = value.chapterNumber != null ? value : null;
     if (chapter == null) return;
