@@ -23,6 +23,16 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
   final _currentChunkStreamController = StreamController<int>.broadcast();
   Stream<int> get currentChunkStream => _currentChunkStreamController.stream;
 
+  // ─── Subscripciones gestionadas (evita "addStream while addStream") ──────────
+
+  /// Suscripción al stream de eventos del player → propaga a playbackState.
+  /// Se usa .add() manual en lugar de .pipe() / addStream() para no bloquear
+  /// el BehaviorSubject de audio_service.
+  StreamSubscription<PlaybackState>? _playbackEventSub;
+
+  /// Suscripción al stream de estado del player → auto-avance de chunks.
+  StreamSubscription<PlayerState>? _playerStateSub;
+
   // ─── Constructor ─────────────────────────────────────────────────────────────
 
   LectorIaAudioHandler() {
@@ -31,15 +41,36 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
   }
 
   void _initPlayer() {
-    // Propagar eventos del player a AudioService
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
+    _attachPlayerListeners();
+  }
+
+  /// Conecta las suscripciones al player.
+  /// Cancelar antes de volver a llamar con [_detachPlayerListeners].
+  void _attachPlayerListeners() {
+    // Propagar eventos del player a playbackState usando .add() (NO .pipe())
+    _playbackEventSub = _player.playbackEventStream
+        .map(_transformEvent)
+        .listen((state) {
+      // Sólo emite si el subject no está ya cerrado
+      if (!playbackState.isClosed) {
+        playbackState.add(state);
+      }
+    });
 
     // Auto-avanzar al siguiente chunk cuando termina el actual
-    _player.playerStateStream.listen((state) {
+    _playerStateSub = _player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         _onChunkCompleted();
       }
     });
+  }
+
+  /// Cancela y elimina las suscripciones activas al player.
+  Future<void> _detachPlayerListeners() async {
+    await _playbackEventSub?.cancel();
+    _playbackEventSub = null;
+    await _playerStateSub?.cancel();
+    _playerStateSub = null;
   }
 
   // ─── Queue Management (Public API llamada desde el ReaderBloc) ───────────────
@@ -52,6 +83,10 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
     required Uri? artUri,
     int startFromIndex = 0,
   }) async {
+    // Detener reproducción y cancelar suscripciones antes de cargar nueva cola
+    await _detachPlayerListeners();
+    await _player.stop();
+
     _chunkPaths
       ..clear()
       ..addAll(chunkPaths);
@@ -77,11 +112,18 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
     );
     queue.add(items);
 
+    // Volver a conectar listeners antes de reproducir
+    _attachPlayerListeners();
+
     await _playCurrentChunk();
   }
 
   /// Carga un chunk individual y lo reproduce (para modo single-chunk).
   Future<void> loadAndPlayChunk(String audioFilePath) async {
+    await _detachPlayerListeners();
+    await _player.stop();
+    _attachPlayerListeners();
+
     await _player.setFilePath(audioFilePath);
     await _player.play();
   }
@@ -102,9 +144,20 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
 
   @override
   Future<void> stop() async {
+    // 1. Cancelar suscripciones ANTES de detener el player para que el
+    //    BehaviorSubject de playbackState no reciba eventos mientras
+    //    super.stop() intenta hacer .add() sobre él.
+    await _detachPlayerListeners();
+
+    // 2. Detener el player
     await _player.stop();
     _sessionManager.abandonAudioFocus();
+
+    // 3. Ahora super.stop() puede llamar a playbackState.add() sin conflicto
     await super.stop();
+
+    // 4. Reconectar listeners para que el estado siga siendo reactivo
+    _attachPlayerListeners();
   }
 
   /// Avanzar al siguiente párrafo/chunk.
@@ -112,6 +165,10 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
   Future<void> skipToNext() async {
     if (_currentChunkIndex < _chunkPaths.length - 1) {
       _currentChunkIndex++;
+      // Detener sin llamar super.stop() (no queremos cerrar el servicio)
+      await _detachPlayerListeners();
+      await _player.stop();
+      _attachPlayerListeners();
       await _playCurrentChunk();
     } else {
       // Fin del capítulo
@@ -131,6 +188,10 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
       await _player.seek(Duration.zero);
       return;
     }
+    // Detener y reconectar igual que en skipToNext
+    await _detachPlayerListeners();
+    await _player.stop();
+    _attachPlayerListeners();
     await _playCurrentChunk();
   }
 
@@ -149,6 +210,9 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
         final index = extras?['index'] as int?;
         if (index != null && index >= 0 && index < _chunkPaths.length) {
           _currentChunkIndex = index;
+          await _detachPlayerListeners();
+          await _player.stop();
+          _attachPlayerListeners();
           await _playCurrentChunk();
         }
         break;
@@ -233,7 +297,10 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
 
   @override
   Future<void> onTaskRemoved() async {
-    await stop();
+    await _detachPlayerListeners();
+    await _player.stop();
+    _sessionManager.abandonAudioFocus();
+    await super.stop();
     await _player.dispose();
     _currentChunkStreamController.close();
     _sessionManager.dispose();
