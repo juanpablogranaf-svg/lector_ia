@@ -16,7 +16,8 @@ import '../../../data/datasources/remote/tts_remote_datasource.dart';
 import '../../../data/models/book_model.dart';
 import '../../../data/models/reading_progress_model.dart';
 import '../../../services/audio_service/background_audio_handler.dart';
-import '../../../services/audio_service/native_tts_service.dart';
+import '../../../services/audio_service/native_tts_service.dart'
+    show NativeTtsService, NativeTtsLanguageUnavailableException, NativeTtsSynthesisException;
 import '../../../main.dart' show audioHandler;
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -323,7 +324,18 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
   // ─── TTS Helpers ─────────────────────────────────────────────────────────────
 
   Future<void> _startTtsPlayback(Emitter<ReaderState> emit) async {
-    if (state.book == null || state.chunks.isEmpty) return;
+    if (state.book == null) return;
+
+    // Para EPUB y PDF los chunks se generan bajo demanda desde el texto visible.
+    // Si no hay chunks (p.ej. primer play de EPUB), mostrar error claro.
+    if (state.chunks.isEmpty) {
+      emit(state.copyWith(
+        ttsStatus: TtsStatus.error,
+        ttsErrorMessage: 'No hay texto disponible para leer en voz alta.\n'
+            'Para EPUB y PDF, desplázate hasta el texto que quieres escuchar y vuelve a pulsar Play.',
+      ));
+      return;
+    }
 
     final provider = _prefs.getString(AppConstants.prefTtsProvider) ?? 'google';
     final apiKey = _prefs.getString(AppConstants.prefApiKey) ?? '';
@@ -332,30 +344,32 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     if (provider == 'google' && apiKey.isEmpty) {
       emit(state.copyWith(
         ttsStatus: TtsStatus.error,
-        ttsErrorMessage: 'Falta la API Key de Google Cloud. Introduce una en Ajustes o cambia al motor de voz nativo del dispositivo (gratis y offline).',
+        ttsErrorMessage: 'Falta la API Key de Google Cloud.\n'
+            'Introdúcela en Ajustes → Google Cloud TTS, o cambia al motor de voz nativo del dispositivo (gratis y offline).',
       ));
       return;
     }
 
     emit(state.copyWith(ttsStatus: TtsStatus.loading));
 
-    try {
-      final chunk = state.chunks[state.currentChunkIndex];
-      String firstAudioPath;
-      final pathsList = <String>[];
+    final chunk = state.chunks[state.currentChunkIndex];
+    final pathsList = <String>[];
 
+    try {
       if (provider == 'native') {
-        // Generar audio offline mediante flutter_tts
-        firstAudioPath = await NativeTtsService.instance.synthesizeToFile(
+        // ── Modo TTS Nativo (Offline / flutter_tts) ──────────────────────────
+        // setLanguage es OBLIGATORIO antes de sintetizar en Android
+        final String audioPath = await NativeTtsService.instance.synthesizeToFile(
           text: chunk.text,
           bookId: state.book!.id,
           chunkHash: chunk.hash,
           voiceName: nativeVoice,
+          languageCode: 'es-ES',
           rate: state.ttsSpeed,
         );
-        pathsList.add(firstAudioPath);
+        pathsList.add(audioPath);
 
-        // Intentar pre-sintetizar el siguiente chunk nativamente
+        // Pre-sintetizar el siguiente chunk nativamente en background
         final upcomingChunks = state.chunks.skip(state.currentChunkIndex + 1).take(2).toList();
         for (final upcoming in upcomingChunks) {
           try {
@@ -364,15 +378,17 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
               bookId: state.book!.id,
               chunkHash: upcoming.hash,
               voiceName: nativeVoice,
+              languageCode: 'es-ES',
               rate: state.ttsSpeed,
             );
             pathsList.add(p);
           } catch (_) {
+            // Los chunks adicionales son opcionales; continuar con el principal
             break;
           }
         }
       } else {
-        // Google Cloud TTS
+        // ── Modo Google Cloud TTS ─────────────────────────────────────────────
         final result = await _ttsDatasource.synthesizeChunk(
           chunk: chunk,
           bookId: state.book!.id,
@@ -380,10 +396,9 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
           speakingRate: state.ttsSpeed,
           voiceName: _prefs.getString(AppConstants.prefTtsVoice),
         );
-        firstAudioPath = result.audioFilePath;
-        pathsList.add(firstAudioPath);
+        pathsList.add(result.audioFilePath);
 
-        // Pre-cargar próximos chunks
+        // Pre-cargar próximos chunks en background
         final upcomingChunks = state.chunks.skip(state.currentChunkIndex + 1).take(2).toList();
         for (final upcoming in upcomingChunks) {
           try {
@@ -401,6 +416,10 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
         }
       }
 
+      if (pathsList.isEmpty) {
+        throw Exception('No se pudo generar ningún archivo de audio.');
+      }
+
       // Cargar cola de chunks en el AudioHandler
       final handler = audioHandler as LectorIaAudioHandler;
       await handler.loadChapterQueue(
@@ -415,15 +434,30 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
 
       emit(state.copyWith(ttsStatus: TtsStatus.playing));
 
-      // Prefetch en background del resto
+      // Prefetch en background del resto del capítulo
       if (provider == 'google') {
         _prefetchNextChunks(state.book!, state.chunks, state.currentChunkIndex + 3);
       }
+    } on NativeTtsLanguageUnavailableException catch (e) {
+      // Error específico: idioma no instalado en el motor TTS del dispositivo
+      emit(state.copyWith(
+        ttsStatus: TtsStatus.error,
+        ttsErrorMessage: '🗣️ ${e.message}',
+      ));
+    } on NativeTtsSynthesisException catch (e) {
+      emit(state.copyWith(
+        ttsStatus: TtsStatus.error,
+        ttsErrorMessage: '🔇 Error al generar audio nativo:\n${e.message}',
+      ));
     } catch (e) {
+      // Error genérico — siempre restablecer estado a error (nunca dejar en "loading")
       final errorMsg = e.toString();
-      final suggestion = provider == 'google' 
-          ? '\n💡 Sugerencia: Puedes cambiar al motor de voz nativo (gratis/offline) en Ajustes si tu API key ha fallado.'
-          : '';
+      final String suggestion;
+      if (provider == 'google') {
+        suggestion = '\n💡 Comprueba tu API Key en Ajustes, o cambia al motor de voz nativo (gratis/offline).';
+      } else {
+        suggestion = '\n💡 Verifica que el motor TTS de tu teléfono tenga el español instalado.';
+      }
       emit(state.copyWith(
         ttsStatus: TtsStatus.error,
         ttsErrorMessage: '$errorMsg$suggestion',

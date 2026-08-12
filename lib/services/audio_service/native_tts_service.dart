@@ -1,111 +1,181 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/foundation.dart';
 
 class NativeTtsService {
   NativeTtsService._();
   static final NativeTtsService instance = NativeTtsService._();
 
   final FlutterTts _flutterTts = FlutterTts();
-  bool _isSpeaking = false;
-  
-  // Callback para cuando se termina de hablar
-  void Function()? _onCompletion;
+  bool _initialized = false;
 
   Future<void> init() async {
+    if (_initialized) return;
+
     _flutterTts.setCompletionHandler(() {
-      _isSpeaking = false;
-      _onCompletion?.call();
+      debugPrint('[NativeTTS] Completion');
     });
-    
+
     _flutterTts.setErrorHandler((msg) {
-      _isSpeaking = false;
+      debugPrint('[NativeTTS] Error: $msg');
     });
 
     _flutterTts.setCancelHandler(() {
-      _isSpeaking = false;
+      debugPrint('[NativeTTS] Cancelled');
     });
+
+    _initialized = true;
+    debugPrint('[NativeTTS] Initialized');
   }
 
-  /// Sintetiza texto directamente a un archivo de audio local (offline) y retorna la ruta.
-  /// Esto nos permite reutilizar el LectorIaAudioHandler (just_audio) y toda la lógica de segundo plano,
-  /// incluyendo el Media Session, controles en bloqueo, skip, etc.
+  /// Verifica si el idioma [languageCode] está disponible en el motor TTS del dispositivo.
+  /// Lanza [NativeTtsLanguageUnavailableException] si no lo está.
+  Future<void> _configureLanguage(String languageCode) async {
+    try {
+      final result = await _flutterTts.setLanguage(languageCode);
+      // flutter_tts devuelve 1 si OK, 0 si no disponible
+      if (result == 0) {
+        throw NativeTtsLanguageUnavailableException(
+          'El motor TTS del dispositivo no tiene instalado el idioma "$languageCode". '
+          'Ve a Ajustes del teléfono → Accesibilidad → TTS → e instala el paquete de español.',
+        );
+      }
+      debugPrint('[NativeTTS] Language set: $languageCode (result=$result)');
+    } catch (e) {
+      if (e is NativeTtsLanguageUnavailableException) rethrow;
+      // Si la excepción es del propio flutter_tts (ej. PlatformException), la propagamos con contexto
+      throw NativeTtsLanguageUnavailableException(
+        'No se pudo configurar el idioma TTS "$languageCode": $e',
+      );
+    }
+  }
+
+  /// Sintetiza [text] directamente a un archivo de audio local (offline) y retorna la ruta absoluta.
+  /// Usa el motor TTS nativo de Android/iOS para generar audio sin conexión.
   Future<String> synthesizeToFile({
     required String text,
     required String bookId,
     required String chunkHash,
-    required String voiceName,
-    required double rate,
+    String voiceName = '',
+    String languageCode = 'es-ES',
+    double rate = 1.0,
   }) async {
+    if (!_initialized) await init();
+
     final tempDir = await getTemporaryDirectory();
     final nativeTtsDir = Directory('${tempDir.path}/native_tts_cache');
     if (!await nativeTtsDir.exists()) {
       await nativeTtsDir.create(recursive: true);
     }
 
-    final filePath = '${nativeTtsDir.path}/${bookId}_$chunkHash.wav';
+    // Nombre de archivo seguro (sin caracteres especiales)
+    final safeBookId = bookId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final fileName = '${safeBookId}_$chunkHash.wav';
+    final filePath = '${nativeTtsDir.path}/$fileName';
     final file = File(filePath);
-    
-    // Si ya existe sintetizado localmente, devolver la ruta
-    if (await file.exists()) {
+
+    // Si ya existe en caché, reutilizar
+    if (await file.exists() && await file.length() > 100) {
+      debugPrint('[NativeTTS] Cache hit: $filePath');
       return filePath;
     }
 
-    // Configurar voz y velocidad
+    // 1. Configurar idioma (obligatorio antes de sintetizar en Android)
+    await _configureLanguage(languageCode);
+
+    // 2. Configurar voz específica si se proporcionó
     if (voiceName.isNotEmpty) {
-      await _flutterTts.setVoice({"name": voiceName, "locale": "es-ES"}); // locale aproximado
+      try {
+        await _flutterTts.setVoice({'name': voiceName, 'locale': languageCode});
+        debugPrint('[NativeTTS] Voice set: $voiceName');
+      } catch (e) {
+        // Voz específica no disponible — continuar con la voz por defecto del idioma
+        debugPrint('[NativeTTS] Voice "$voiceName" not available, using default: $e');
+      }
     }
-    
-    // Convertir el rate de just_audio (0.5 a 2.0) al de flutter_tts (normalmente 0.0 a 1.0)
-    final nativeRate = (rate / 2.0).clamp(0.0, 1.0);
+
+    // 3. Configurar velocidad (flutter_tts usa rango 0.0–1.0, just_audio usa 0.5–2.0)
+    final nativeRate = (rate / 2.0).clamp(0.1, 1.0);
     await _flutterTts.setSpeechRate(nativeRate);
 
-    // Sintetizar a archivo nativamente
-    // En Android, synthesizeToFile escribe un archivo de audio en la ruta dada.
-    // Nota: en algunos dispositivos Android, el nombre debe terminar en .wav o .mp3.
-    final result = await _flutterTts.synthesizeToFile(text, Platform.isAndroid ? '${bookId}_$chunkHash.wav' : filePath);
-    
-    if (Platform.isAndroid) {
-      // En Android, synthesizeToFile a veces guarda en la carpeta externa de descargas de la app
-      // o directamente en la ruta especificada de forma interna según la versión de flutter_tts.
-      // Si el archivo no aparece en la ruta absoluta directamente, flutter_tts lo coloca en el
-      // directorio de archivos externos de la app. Para evitar líos y asegurar portabilidad,
-      // podemos esperar un momento a que se complete la escritura.
-      
-      // La API synthesizeToFile en Android genera el archivo en:
-      // Context.getExternalFilesDir(null) + "/" + nombre del archivo
-      final externalDir = await getExternalStorageDirectory();
-      final androidFilePath = '${externalDir?.path}/${bookId}_$chunkHash.wav';
-      final androidFile = File(androidFilePath);
+    // 4. Sintetizar a archivo con ruta ABSOLUTA
+    // IMPORTANTE: En Android, la ruta debe ser absoluta. flutter_tts coloca el archivo
+    // exactamente en la ruta indicada cuando se pasa una ruta absoluta.
+    debugPrint('[NativeTTS] Synthesizing to: $filePath');
+    final result = await _flutterTts.synthesizeToFile(text, filePath);
+    debugPrint('[NativeTTS] synthesizeToFile result: $result');
 
-      // Esperar brevemente a que aparezca el archivo sintetizado
-      int retries = 0;
-      while (!await androidFile.exists() && retries < 30) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        retries++;
-      }
-
-      if (await androidFile.exists()) {
-        return androidFilePath;
-      }
-    }
-
+    // 5. Esperar a que el archivo esté disponible (máx 5 segundos)
     int retries = 0;
-    while (!await file.exists() && retries < 30) {
+    while (retries < 50) {
+      if (await file.exists() && await file.length() > 100) {
+        debugPrint('[NativeTTS] File ready: $filePath (${await file.length()} bytes)');
+        return filePath;
+      }
       await Future.delayed(const Duration(milliseconds: 100));
       retries++;
     }
 
-    if (await file.exists()) {
-      return filePath;
+    // 6. En algunos dispositivos Android, flutter_tts guarda en getExternalStorageDirectory
+    try {
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir != null) {
+        final externalFile = File('${externalDir.path}/$fileName');
+        if (await externalFile.exists() && await externalFile.length() > 100) {
+          // Copiar al directorio temporal para tener ruta consistente
+          await externalFile.copy(filePath);
+          debugPrint('[NativeTTS] Copied from external: ${externalFile.path} → $filePath');
+          return filePath;
+        }
+      }
+    } catch (e) {
+      debugPrint('[NativeTTS] External dir check failed: $e');
     }
 
-    // Si fallase la síntesis a archivo, reproducimos directamente por altavoz nativo como fallback
-    throw Exception('No se pudo escribir el archivo de audio nativo. ¿Permisos de almacenamiento concedidos?');
+    throw NativeTtsSynthesisException(
+      'No se generó el archivo de audio TTS nativo.\n'
+      'Verifica que el motor TTS del dispositivo tenga el idioma español instalado.\n'
+      'Ruta esperada: $filePath\n'
+      'Resultado de síntesis: $result',
+    );
+  }
+
+  /// Lista las voces disponibles en el motor TTS del dispositivo para el idioma dado.
+  Future<List<Map<String, String>>> getAvailableVoices({String languageCode = 'es-ES'}) async {
+    if (!_initialized) await init();
+    try {
+      final voices = await _flutterTts.getVoices;
+      if (voices == null) return [];
+      return (voices as List)
+          .cast<Map>()
+          .where((v) => (v['locale'] as String? ?? '').startsWith(languageCode.split('-').first))
+          .map((v) => {'name': v['name'] as String, 'locale': v['locale'] as String})
+          .toList();
+    } catch (e) {
+      debugPrint('[NativeTTS] getAvailableVoices error: $e');
+      return [];
+    }
   }
 
   Future<void> stop() async {
     await _flutterTts.stop();
-    _isSpeaking = false;
+    debugPrint('[NativeTTS] Stopped');
   }
+}
+
+/// Excepción lanzada cuando el idioma no está instalado en el motor TTS del dispositivo.
+class NativeTtsLanguageUnavailableException implements Exception {
+  final String message;
+  const NativeTtsLanguageUnavailableException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Excepción lanzada cuando la síntesis a archivo falla.
+class NativeTtsSynthesisException implements Exception {
+  final String message;
+  const NativeTtsSynthesisException(this.message);
+  @override
+  String toString() => message;
 }
