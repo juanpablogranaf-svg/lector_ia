@@ -42,12 +42,17 @@ class _SettingsPageState extends State<SettingsPage> {
           if (voice is Map) {
             final name = voice['name']?.toString() ?? '';
             final locale = voice['locale']?.toString() ?? '';
-            // Filtrar preferentemente voces en español o inglés por comodidad, o listarlas todas
             if (name.isNotEmpty && locale.isNotEmpty) {
-              parsedVoices.add({
-                'name': name,
-                'locale': locale,
-              });
+              final lowerLocale = locale.toLowerCase();
+              // Limitar estrictamente a español (es), francés (fr) e inglés (en)
+              if (lowerLocale.startsWith('es') ||
+                  lowerLocale.startsWith('fr') ||
+                  lowerLocale.startsWith('en')) {
+                parsedVoices.add({
+                  'name': name,
+                  'locale': locale,
+                });
+              }
             }
           }
         }

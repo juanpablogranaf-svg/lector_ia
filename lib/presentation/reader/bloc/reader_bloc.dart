@@ -80,6 +80,14 @@ class ReaderClosed extends ReaderEvent {
   const ReaderClosed();
 }
 
+/// Evento lanzado desde la vista cuando se extrae texto de un EPUB/PDF.
+/// Permite al Bloc generar los chunks de TTS sin depender de la carga del archivo.
+class ReaderTextExtracted extends ReaderEvent {
+  final String text;
+  const ReaderTextExtracted(this.text);
+  @override List<Object?> get props => [text];
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 enum ReaderStatus { initial, loading, loaded, error }
@@ -201,6 +209,7 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     on<ReaderTtsPrevChunk>(_onPrevChunk);
     on<ReaderTtsSpeedChanged>(_onSpeedChanged);
     on<ReaderChapterChanged>(_onChapterChanged);
+    on<ReaderTextExtracted>(_onTextExtracted);
     on<ReaderClosed>(_onClosed);
 
     // Escuchar el índice de chunk desde el AudioHandler
@@ -319,6 +328,29 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     }
     // No detener el audio (continúa en segundo plano)
     emit(const ReaderState());
+  }
+
+  /// Recibe texto extraído desde un visor EPUB/PDF y lo trocea en chunks TTS.
+  void _onTextExtracted(ReaderTextExtracted event, Emitter<ReaderState> emit) {
+    final text = event.text.trim();
+    if (text.isEmpty) return;
+
+    // Solo re-trocea si el texto cambió significativamente (evita re-render en scroll)
+    final current = state.chunks.map((c) => c.text).join();
+    if (current == text || (current.isNotEmpty && text.startsWith(current.substring(0, (current.length / 4).floor())))) {
+      return;
+    }
+
+    final chunks = _chunker.chunk(text);
+    if (chunks.isEmpty) return;
+
+    emit(state.copyWith(
+      chunks: chunks,
+      currentChunkIndex: 0,
+      // Resetear estado de TTS si estaba en error por falta de texto
+      ttsStatus: state.ttsStatus == TtsStatus.error ? TtsStatus.idle : state.ttsStatus,
+      ttsErrorMessage: state.ttsStatus == TtsStatus.error ? '' : state.ttsErrorMessage,
+    ));
   }
 
   // ─── TTS Helpers ─────────────────────────────────────────────────────────────

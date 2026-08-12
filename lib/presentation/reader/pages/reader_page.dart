@@ -21,6 +21,7 @@ class _ReaderPageState extends State<ReaderPage> {
   pdfrx.PdfViewerController? _pdfController;
   final _scrollController = ScrollController();
   bool _showControls = true;
+  pdfrx.PdfDocument? _pdfDocument;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _epubController?.currentValueListenable.removeListener(_onEpubChapterChanged);
     _epubController?.dispose();
 
     context.read<ReaderBloc>().add(const ReaderClosed());
@@ -115,11 +117,78 @@ class _ReaderPageState extends State<ReaderPage> {
     if (book.fileType == 'epub') {
       _epubController = EpubController(
         document: EpubDocument.openFile(File(book.filePath)),
-        epubCfi: null, // Restaurar CFI guardado si existe
+        epubCfi: null,
       );
+      // Escuchar cambios de capítulo para extraer texto al Bloc
+      _epubController!.currentValueListenable.addListener(_onEpubChapterChanged);
     } else if (book.fileType == 'pdf') {
       _pdfController = pdfrx.PdfViewerController();
     }
+  }
+
+  /// Llamado cuando el EpubController cambia de capítulo/página.
+  void _onEpubChapterChanged() {
+    final value = _epubController?.currentValueListenable.value;
+    if (value == null) return;
+    _extractAndSendEpubText(value);
+  }
+
+  /// Extrae el texto plano del capítulo EPUB y lo envía al Bloc.
+  void _extractAndSendEpubText(EpubChapterViewValue value) {
+    // Obtener el texto plano del capítulo EPUB visible actual
+    final chapter = value.chapterNumber != null ? value : null;
+    if (chapter == null) return;
+
+    // EpubView expone el texto del capítulo vía el documento; extraemos
+    // los párrafos del capítulo actual desde el controller.
+    final document = _epubController?.currentValueListenable.value;
+    if (document == null) return;
+
+    // Extraer el contenido HTML del capítulo y convertirlo a texto plano.
+    // EpubDocument da acceso a los capítulos con su contenido HTML.
+    // Usamos una heurística de strip-HTML básico para el TTS.
+    try {
+      final htmlContent = value.paragraphs
+          ?.map((p) => p.element.innerHtml)
+          .join('\n\n') ?? '';
+
+      final plainText = _stripHtml(htmlContent);
+      if (plainText.trim().isNotEmpty && mounted) {
+        context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
+      }
+    } catch (e) {
+      debugPrint('[ReaderPage] EPUB text extraction error: $e');
+    }
+  }
+
+  /// Extrae texto de una página PDF y lo envía al Bloc.
+  Future<void> _extractAndSendPdfText(pdfrx.PdfDocument doc, int pageNumber) async {
+    try {
+      final page = doc.pages[pageNumber - 1];
+      final text = await page.loadText();
+      final extracted = text.fullText.trim();
+      if (extracted.isNotEmpty && mounted) {
+        context.read<ReaderBloc>().add(ReaderTextExtracted(extracted));
+      }
+    } catch (e) {
+      debugPrint('[ReaderPage] PDF text extraction error: $e');
+    }
+  }
+
+  /// Quita etiquetas HTML básicas para obtener texto plano legible por TTS.
+  String _stripHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<br\s*/?>',  caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<p[^>]*>',   caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'</p>',        caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<[^>]+>'),    '')
+        .replaceAll(RegExp(r'&nbsp;'),     ' ')
+        .replaceAll(RegExp(r'&amp;'),      '&')
+        .replaceAll(RegExp(r'&lt;'),       '<')
+        .replaceAll(RegExp(r'&gt;'),       '>')
+        .replaceAll(RegExp(r'&quot;'),     '"')
+        .replaceAll(RegExp(r'\n{3,}'),     '\n\n')
+        .trim();
   }
 
   Widget _buildViewer(ReaderState state, ReaderThemeData theme) {
@@ -150,6 +219,16 @@ class _ReaderPageState extends State<ReaderPage> {
           book.filePath,
           controller: _pdfController,
           params: pdfrx.PdfViewerParams(
+            onDocumentChanged: (doc) {
+              if (doc != null) {
+                _pdfDocument = doc;
+                // Extraer texto de la primera página al cargar el documento
+                final initialPage = state.progress?.pageNumber != null
+                    ? state.progress!.pageNumber + 1
+                    : 1;
+                _extractAndSendPdfText(doc, initialPage);
+              }
+            },
             onPageChanged: (pageNumber) {
               if (pageNumber != null) {
                 final pageCount = _pdfController?.pageCount ?? 1;
@@ -159,6 +238,10 @@ class _ReaderPageState extends State<ReaderPage> {
                     pageNumber - 1,
                   ),
                 );
+                // Extraer texto de la nueva página para TTS
+                if (_pdfDocument != null) {
+                  _extractAndSendPdfText(_pdfDocument!, pageNumber);
+                }
               }
             },
           ),
