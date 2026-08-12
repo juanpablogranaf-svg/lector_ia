@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,17 +15,22 @@ final GetIt sl = GetIt.instance;
 
 Future<void> init() async {
   // ─── External ────────────────────────────────────────────────────────────────
+  debugPrint('🔧 [DI] Obteniendo SharedPreferences...');
   final sharedPrefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(sharedPrefs);
+  debugPrint('✅ [DI] SharedPreferences OK.');
 
   // Inicializar caché de audio
+  debugPrint('🔧 [DI] Inicializando AudioCacheManager...');
   await AudioCacheManager.instance.initialize();
+  debugPrint('✅ [DI] AudioCacheManager OK.');
 
   // ─── Core ─────────────────────────────────────────────────────────────────
   sl.registerLazySingleton<Dio>(() => Dio());
   sl.registerLazySingleton<TextChunker>(() => const TextChunker());
 
   // ─── Data Sources ─────────────────────────────────────────────────────────
+  debugPrint('🔧 [DI] Registrando DatabaseHelper...');
   sl.registerLazySingleton<DatabaseHelper>(() => DatabaseHelper.instance);
 
   sl.registerLazySingleton<BookLocalDatasource>(
@@ -59,4 +65,6 @@ Future<void> init() async {
       chunker: sl(),
     ),
   );
+
+  debugPrint('✅ [DI] Todos los servicios registrados.');
 }
