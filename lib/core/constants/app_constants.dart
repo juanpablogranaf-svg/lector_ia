@@ -46,6 +46,8 @@ class AppConstants {
   static const String prefMargin = 'reader_margin';
   static const String prefTtsSpeed = 'tts_speed';
   static const String prefTtsVoice = 'tts_voice';
+  static const String prefTtsVoiceNative = 'tts_voice_native';
+  static const String prefTtsProvider = 'tts_provider'; // 'google' o 'native'
   static const String prefThemeMode = 'app_theme_mode';
 
   // Audio Service

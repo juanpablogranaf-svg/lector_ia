@@ -5,6 +5,7 @@ import 'package:audio_service/audio_service.dart';
 import 'app/app.dart';
 import 'core/di/injection_container.dart' as di;
 import 'services/audio_service/background_audio_handler.dart';
+import 'services/audio_service/native_tts_service.dart';
 
 late AudioHandler audioHandler;
 
@@ -91,6 +92,11 @@ void main() {
         },
       );
       debugPrint('✅ [main] DI completada.');
+
+      // ── Paso 1.5: Native TTS Service
+      debugPrint('🚀 [main] Inicializando NativeTtsService...');
+      await NativeTtsService.instance.init();
+      debugPrint('✅ [main] NativeTtsService listo.');
 
       // ── Paso 2: AudioService (Foreground Service) — con timeout de seguridad
       debugPrint('🚀 [main] Inicializando AudioService...');

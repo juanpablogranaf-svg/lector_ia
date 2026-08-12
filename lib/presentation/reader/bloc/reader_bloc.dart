@@ -16,6 +16,7 @@ import '../../../data/datasources/remote/tts_remote_datasource.dart';
 import '../../../data/models/book_model.dart';
 import '../../../data/models/reading_progress_model.dart';
 import '../../../services/audio_service/background_audio_handler.dart';
+import '../../../services/audio_service/native_tts_service.dart';
 import '../../../main.dart' show audioHandler;
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -324,11 +325,14 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
   Future<void> _startTtsPlayback(Emitter<ReaderState> emit) async {
     if (state.book == null || state.chunks.isEmpty) return;
 
+    final provider = _prefs.getString(AppConstants.prefTtsProvider) ?? 'google';
     final apiKey = _prefs.getString(AppConstants.prefApiKey) ?? '';
-    if (apiKey.isEmpty) {
+    final nativeVoice = _prefs.getString(AppConstants.prefTtsVoiceNative) ?? '';
+
+    if (provider == 'google' && apiKey.isEmpty) {
       emit(state.copyWith(
         ttsStatus: TtsStatus.error,
-        ttsErrorMessage: 'Configura tu API Key en Ajustes para usar el TTS.',
+        ttsErrorMessage: 'Falta la API Key de Google Cloud. Introduce una en Ajustes o cambia al motor de voz nativo del dispositivo (gratis y offline).',
       ));
       return;
     }
@@ -336,39 +340,69 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     emit(state.copyWith(ttsStatus: TtsStatus.loading));
 
     try {
-      // Sintetizar el chunk actual
       final chunk = state.chunks[state.currentChunkIndex];
-      final result = await _ttsDatasource.synthesizeChunk(
-        chunk: chunk,
-        bookId: state.book!.id,
-        apiKey: apiKey,
-        speakingRate: state.ttsSpeed,
-      );
+      String firstAudioPath;
+      final pathsList = <String>[];
 
-      // Cargar cola de chunks restantes en el AudioHandler
-      final handler = audioHandler as LectorIaAudioHandler;
+      if (provider == 'native') {
+        // Generar audio offline mediante flutter_tts
+        firstAudioPath = await NativeTtsService.instance.synthesizeToFile(
+          text: chunk.text,
+          bookId: state.book!.id,
+          chunkHash: chunk.hash,
+          voiceName: nativeVoice,
+          rate: state.ttsSpeed,
+        );
+        pathsList.add(firstAudioPath);
 
-      // Sintetizar los próximos 2 chunks para alimentar la cola
-      final pathsList = <String>[result.audioFilePath];
-      final upcomingChunks = state.chunks
-          .skip(state.currentChunkIndex + 1)
-          .take(2)
-          .toList();
+        // Intentar pre-sintetizar el siguiente chunk nativamente
+        final upcomingChunks = state.chunks.skip(state.currentChunkIndex + 1).take(2).toList();
+        for (final upcoming in upcomingChunks) {
+          try {
+            final p = await NativeTtsService.instance.synthesizeToFile(
+              text: upcoming.text,
+              bookId: state.book!.id,
+              chunkHash: upcoming.hash,
+              voiceName: nativeVoice,
+              rate: state.ttsSpeed,
+            );
+            pathsList.add(p);
+          } catch (_) {
+            break;
+          }
+        }
+      } else {
+        // Google Cloud TTS
+        final result = await _ttsDatasource.synthesizeChunk(
+          chunk: chunk,
+          bookId: state.book!.id,
+          apiKey: apiKey,
+          speakingRate: state.ttsSpeed,
+          voiceName: _prefs.getString(AppConstants.prefTtsVoice),
+        );
+        firstAudioPath = result.audioFilePath;
+        pathsList.add(firstAudioPath);
 
-      for (final upcoming in upcomingChunks) {
-        try {
-          final r = await _ttsDatasource.synthesizeChunk(
-            chunk: upcoming,
-            bookId: state.book!.id,
-            apiKey: apiKey,
-            speakingRate: state.ttsSpeed,
-          );
-          pathsList.add(r.audioFilePath);
-        } catch (_) {
-          break;
+        // Pre-cargar próximos chunks
+        final upcomingChunks = state.chunks.skip(state.currentChunkIndex + 1).take(2).toList();
+        for (final upcoming in upcomingChunks) {
+          try {
+            final r = await _ttsDatasource.synthesizeChunk(
+              chunk: upcoming,
+              bookId: state.book!.id,
+              apiKey: apiKey,
+              speakingRate: state.ttsSpeed,
+              voiceName: _prefs.getString(AppConstants.prefTtsVoice),
+            );
+            pathsList.add(r.audioFilePath);
+          } catch (_) {
+            break;
+          }
         }
       }
 
+      // Cargar cola de chunks en el AudioHandler
+      final handler = audioHandler as LectorIaAudioHandler;
       await handler.loadChapterQueue(
         chunkPaths: pathsList,
         bookTitle: state.book!.title,
@@ -381,12 +415,18 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
 
       emit(state.copyWith(ttsStatus: TtsStatus.playing));
 
-      // Continuar pre-cargando chunks en background
-      _prefetchNextChunks(state.book!, state.chunks, state.currentChunkIndex + 3);
+      // Prefetch en background del resto
+      if (provider == 'google') {
+        _prefetchNextChunks(state.book!, state.chunks, state.currentChunkIndex + 3);
+      }
     } catch (e) {
+      final errorMsg = e.toString();
+      final suggestion = provider == 'google' 
+          ? '\n💡 Sugerencia: Puedes cambiar al motor de voz nativo (gratis/offline) en Ajustes si tu API key ha fallado.'
+          : '';
       emit(state.copyWith(
         ttsStatus: TtsStatus.error,
-        ttsErrorMessage: e.toString(),
+        ttsErrorMessage: '$errorMsg$suggestion',
       ));
     }
   }
