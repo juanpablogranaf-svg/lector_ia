@@ -5,13 +5,25 @@ class AppConstants {
   static const String dbName = 'lector_ia.db';
   static const int dbVersion = 1;
 
-  // Carpetas escaneadas en el dispositivo
+  // Carpetas de usuario que se escanean en busca de libros.
+  // ⚠️  NO incluir la raíz '/storage/emulated/0/' porque el escaneo
+  //    recursivo entra en Android/data y provoca PermissionDenied en Android 11+.
   static const List<String> scanPaths = [
-    '/storage/emulated/0/',
-    '/storage/emulated/0/Download/',
-    '/storage/emulated/0/Documents/',
-    '/storage/emulated/0/Books/',
-    '/storage/emulated/0/DCIM/',
+    '/storage/emulated/0/Download',
+    '/storage/emulated/0/Downloads',
+    '/storage/emulated/0/Documents',
+    '/storage/emulated/0/Books',
+    '/storage/emulated/0/Libros',
+    '/storage/emulated/0/Ebooks',
+    '/storage/emulated/0/eBooks',
+  ];
+
+  // Segmentos de ruta que siempre se omiten durante el escaneo.
+  static const List<String> scanBlockedSegments = [
+    '/Android/data',
+    '/Android/obb',
+    '/Android/media',
+    '/.', // directorios ocultos
   ];
 
   // Extensiones soportadas

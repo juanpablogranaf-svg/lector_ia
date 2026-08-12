@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -36,7 +37,10 @@ class BookLocalDatasource {
   // ─── Escaneo de Archivos ─────────────────────────────────────────────────────
 
   /// Escanea las rutas definidas en [AppConstants.scanPaths] buscando EPUB, PDF y TXT.
-  /// Retorna la lista de libros encontrados.
+  ///
+  /// Usa exploración iterativa (BFS) directorio a directorio con try-catch
+  /// individual, de modo que un directorio con PermissionDenied no rompe
+  /// el escaneo completo (problema típico de Scoped Storage en Android 11+).
   Stream<BookModel> scanBooks({
     List<String>? customPaths,
     void Function(int found)? onProgress,
@@ -45,28 +49,63 @@ class BookLocalDatasource {
     int foundCount = 0;
 
     for (final rootPath in paths) {
-      final dir = Directory(rootPath);
-      if (!await dir.exists()) continue;
+      final rootDir = Directory(rootPath);
+      if (!await rootDir.exists()) continue;
 
-      final stream = dir.list(recursive: true, followLinks: false);
-      await for (final entity in stream) {
-        if (entity is! File) continue;
-        final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
-        if (!AppConstants.supportedExtensions.contains(ext)) continue;
+      // BFS: cola de directorios pendientes de explorar
+      final queue = <Directory>[rootDir];
 
-        try {
-          final stat = await entity.stat();
-          final book = BookModel.fromFile(entity, stat, ext);
-          foundCount++;
-          onProgress?.call(foundCount);
-          yield book;
-        } catch (_) {
-          // Skip archivos inaccesibles
+      while (queue.isNotEmpty) {
+        final current = queue.removeAt(0);
+
+        // ── Comprobar si el directorio está bloqueado ───────────────────────
+        final path = current.path;
+        bool isBlocked = false;
+        for (final segment in AppConstants.scanBlockedSegments) {
+          if (path.contains(segment)) {
+            isBlocked = true;
+            break;
+          }
+        }
+        if (isBlocked) {
+          debugPrint('🚫 [Scanner] Omitiendo ruta restringida: $path');
           continue;
+        }
+
+        // ── Listar contenido del directorio con try-catch individual ────────
+        List<FileSystemEntity> entities;
+        try {
+          entities = current.listSync(followLinks: false);
+        } on FileSystemException catch (e) {
+          debugPrint('⚠️ [Scanner] Sin acceso a: $path — ${e.message}');
+          continue;
+        } catch (e) {
+          debugPrint('⚠️ [Scanner] Error inesperado en: $path — $e');
+          continue;
+        }
+
+        for (final entity in entities) {
+          if (entity is Directory) {
+            queue.add(entity);
+          } else if (entity is File) {
+            final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
+            if (!AppConstants.supportedExtensions.contains(ext)) continue;
+
+            try {
+              final stat = await entity.stat();
+              final book = BookModel.fromFile(entity, stat, ext);
+              foundCount++;
+              onProgress?.call(foundCount);
+              yield book;
+            } catch (_) {
+              // Archivo inaccesible — ignorar y continuar
+            }
+          }
         }
       }
     }
   }
+
 
   // ─── CRUD en Base de Datos ───────────────────────────────────────────────────
 
