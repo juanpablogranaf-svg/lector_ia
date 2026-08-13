@@ -93,8 +93,11 @@ class TtsRemoteDatasource {
     }
 
     // 2. Detectar idioma si no se especificó
-    final resolvedLanguage = languageCode ?? _detectLanguage(chunk.text);
-    final resolvedVoice = voiceName ?? _getVoiceForLanguage(resolvedLanguage);
+    final detectedLanguage = languageCode ?? _detectLanguage(chunk.text);
+    final resolvedLanguage = detectedLanguage.isEmpty ? 'es-ES' : detectedLanguage;
+    
+    final voiceOption = voiceName ?? _getVoiceForLanguage(resolvedLanguage);
+    final resolvedVoice = voiceOption.isEmpty ? 'es-ES-Neural2-A' : voiceOption;
 
     // 3. Encolar solicitud (rate limiting)
     final audioBytes = await _enqueueRequest(
@@ -197,11 +200,14 @@ class TtsRemoteDatasource {
   }) async {
     const maxAttempts = 3;
 
+    final resolvedLanguage = languageCode.isEmpty ? 'es-ES' : languageCode;
+    final resolvedVoice = voiceName.isEmpty ? 'es-ES-Neural2-A' : voiceName;
+
     final body = {
       'input': {'text': text},
       'voice': {
-        'languageCode': languageCode,
-        'name': voiceName,
+        'languageCode': resolvedLanguage,
+        'name': resolvedVoice,
       },
       'audioConfig': {
         'audioEncoding': ApiConstants.audioEncoding,
@@ -214,8 +220,10 @@ class TtsRemoteDatasource {
 
     try {
       final response = await _dio.post(
-        ApiConstants.ttsSynthesizeEndpoint,
-        queryParameters: {'key': apiKey},
+        '${ApiConstants.ttsBaseUrl}${ApiConstants.ttsSynthesizeEndpoint}?key=$apiKey',
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
         data: jsonEncode(body),
       );
 

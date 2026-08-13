@@ -13,6 +13,7 @@ import '../../../core/utils/audio_cache_manager.dart';
 import '../../../data/datasources/local/book_local_datasource.dart';
 import '../../../data/datasources/local/progress_local_datasource.dart';
 import '../../../data/datasources/remote/tts_remote_datasource.dart';
+import '../../../core/errors/failures.dart';
 import '../../../data/models/book_model.dart';
 import '../../../data/models/reading_progress_model.dart';
 import '../../../services/audio_service/background_audio_handler.dart';
@@ -483,7 +484,13 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
       ));
     } catch (e) {
       // Error genérico — siempre restablecer estado a error (nunca dejar en "loading")
-      final errorMsg = e.toString();
+      final String errorMsg;
+      if (e is Failure) {
+        errorMsg = e.message;
+      } else {
+        errorMsg = e.toString();
+      }
+      
       final String suggestion;
       if (provider == 'google') {
         suggestion = '\n💡 Comprueba tu API Key en Ajustes, o cambia al motor de voz nativo (gratis/offline).';
