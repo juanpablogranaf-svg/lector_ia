@@ -60,11 +60,19 @@ class _ReaderPageState extends State<ReaderPage> {
         if (state.ttsStatus == TtsStatus.error && (state.ttsErrorMessage?.contains('No hay texto disponible') ?? false)) {
           // Si no hay texto al presionar Play, intentar buscar el siguiente bloque legible automáticamente
           if (state.book?.fileType == 'epub') {
-            debugPrint('[ReaderPage] Empty text on Play, seeking next EPUB chapter...');
-            _epubController?.next();
+            // Para EPUB, hacer scroll hacia adelante para forzar carga del siguiente capítulo
+            debugPrint('[ReaderPage] Empty text on Play, scrolling forward to find next EPUB text...');
+            if (_scrollController.hasClients && _scrollController.position.maxScrollExtent > 0) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
           } else if (state.book?.fileType == 'pdf' && _pdfController != null && _pdfDocument != null) {
-            final currentPage = _pdfController!.pageNumber;
-            if (currentPage < _pdfDocument!.pageCount) {
+            final currentPage = _pdfController!.pageNumber ?? 1;
+            final totalPages = _pdfDocument!.pages.length;
+            if (currentPage < totalPages) {
               debugPrint('[ReaderPage] Empty text on Play, seeking next PDF page: ${currentPage + 1}...');
               _pdfController!.goToPage(pageNumber: currentPage + 1);
             }
@@ -169,11 +177,9 @@ class _ReaderPageState extends State<ReaderPage> {
           context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
         }
       } else {
-        // Capítulo vacío (p. ej. portada con solo imagen), buscar el siguiente automáticamente
-        debugPrint('[ReaderPage] EPUB chapter is empty of text. Auto-seeking next chapter...');
-        Future.delayed(const Duration(milliseconds: 150), () {
-          if (mounted) _epubController?.next();
-        });
+        // Capítulo vacío (p.ej. portada con solo imagen) — para EPUB no hay API directa de "next chapter"
+        // El usuario puede desplazarse manualmente; el listener de scroll captará el siguiente capítulo con texto.
+        debugPrint('[ReaderPage] EPUB chapter is empty of text (possibly image/cover). Waiting for next chapter scroll.');
       }
     } catch (e) {
       debugPrint('[ReaderPage] EPUB text extraction error: $e');
@@ -191,8 +197,8 @@ class _ReaderPageState extends State<ReaderPage> {
           context.read<ReaderBloc>().add(ReaderTextExtracted(extracted));
         }
       } else {
-        // Página vacía o imagen, avanzar automáticamente
-        final totalPages = doc.pageCount;
+        // Página vacía o imagen, avanzar automáticamente a la siguiente
+        final totalPages = doc.pages.length;
         if (pageNumber < totalPages) {
           debugPrint('[ReaderPage] PDF page $pageNumber is empty. Auto-seeking page ${pageNumber + 1}...');
           Future.delayed(const Duration(milliseconds: 150), () {
