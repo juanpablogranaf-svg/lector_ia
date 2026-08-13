@@ -127,6 +127,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: _selectedProvider,
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Motor de síntesis activo',
               prefixIcon: Icon(Icons.volume_up),
@@ -134,11 +135,17 @@ class _SettingsPageState extends State<SettingsPage> {
             items: const [
               DropdownMenuItem(
                 value: 'google',
-                child: Text('Google Cloud TTS (Online / Alta calidad)'),
+                child: Text(
+                  'Google Cloud TTS (Online / Alta calidad)',
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               DropdownMenuItem(
                 value: 'native',
-                child: Text('Voz del dispositivo (Offline / Gratis)'),
+                child: Text(
+                  'Voz del dispositivo (Offline / Gratis)',
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
             onChanged: (val) {

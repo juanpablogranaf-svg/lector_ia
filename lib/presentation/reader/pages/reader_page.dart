@@ -52,10 +52,23 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<ReaderBloc, ReaderState>(
-      listenWhen: (p, c) => p.status != c.status || p.book != c.book,
+      listenWhen: (p, c) => p.status != c.status || p.book != c.book || p.ttsStatus != c.ttsStatus,
       listener: (context, state) {
         if (state.status == ReaderStatus.loaded && state.book != null) {
           _initViewer(state);
+        }
+        if (state.ttsStatus == TtsStatus.error && (state.ttsErrorMessage?.contains('No hay texto disponible') ?? false)) {
+          // Si no hay texto al presionar Play, intentar buscar el siguiente bloque legible automáticamente
+          if (state.book?.fileType == 'epub') {
+            debugPrint('[ReaderPage] Empty text on Play, seeking next EPUB chapter...');
+            _epubController?.next();
+          } else if (state.book?.fileType == 'pdf' && _pdfController != null && _pdfDocument != null) {
+            final currentPage = _pdfController!.pageNumber;
+            if (currentPage < _pdfDocument!.pageCount) {
+              debugPrint('[ReaderPage] Empty text on Play, seeking next PDF page: ${currentPage + 1}...');
+              _pdfController!.goToPage(pageNumber: currentPage + 1);
+            }
+          }
         }
       },
       builder: (context, state) {
@@ -145,16 +158,22 @@ class _ReaderPageState extends State<ReaderPage> {
     if (document == null) return;
 
     // Extraer el contenido HTML del capítulo y convertirlo a texto plano.
-    // EpubDocument da acceso a los capítulos con su contenido HTML.
-    // Usamos una heurística de strip-HTML básico para el TTS.
     try {
       final htmlContent = value.paragraphs
           ?.map((p) => p.element.innerHtml)
           .join('\n\n') ?? '';
 
       final plainText = _stripHtml(htmlContent);
-      if (plainText.trim().isNotEmpty && mounted) {
-        context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
+      if (plainText.trim().isNotEmpty) {
+        if (mounted) {
+          context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
+        }
+      } else {
+        // Capítulo vacío (p. ej. portada con solo imagen), buscar el siguiente automáticamente
+        debugPrint('[ReaderPage] EPUB chapter is empty of text. Auto-seeking next chapter...');
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) _epubController?.next();
+        });
       }
     } catch (e) {
       debugPrint('[ReaderPage] EPUB text extraction error: $e');
@@ -167,8 +186,19 @@ class _ReaderPageState extends State<ReaderPage> {
       final page = doc.pages[pageNumber - 1];
       final text = await page.loadText();
       final extracted = text.fullText.trim();
-      if (extracted.isNotEmpty && mounted) {
-        context.read<ReaderBloc>().add(ReaderTextExtracted(extracted));
+      if (extracted.isNotEmpty) {
+        if (mounted) {
+          context.read<ReaderBloc>().add(ReaderTextExtracted(extracted));
+        }
+      } else {
+        // Página vacía o imagen, avanzar automáticamente
+        final totalPages = doc.pageCount;
+        if (pageNumber < totalPages) {
+          debugPrint('[ReaderPage] PDF page $pageNumber is empty. Auto-seeking page ${pageNumber + 1}...');
+          Future.delayed(const Duration(milliseconds: 150), () {
+            if (mounted) _pdfController?.goToPage(pageNumber: pageNumber + 1);
+          });
+        }
       }
     } catch (e) {
       debugPrint('[ReaderPage] PDF text extraction error: $e');
