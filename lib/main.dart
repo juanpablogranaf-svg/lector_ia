@@ -106,7 +106,7 @@ void main() {
           androidNotificationChannelId: 'com.lector.ia.audio',
           androidNotificationChannelName: 'LectorIA Audio',
           androidNotificationOngoing: true,
-          androidNotificationIcon: 'drawable/ic_notification',
+          androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,
           notificationColor: Color(0xFF1A1A2E),
           androidStopForegroundOnPause: true,

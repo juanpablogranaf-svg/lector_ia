@@ -99,44 +99,42 @@ class NativeTtsService {
     final nativeRate = (rate / 2.0).clamp(0.1, 1.0);
     await _flutterTts.setSpeechRate(nativeRate);
 
-    // 4. Sintetizar a archivo con ruta ABSOLUTA
-    // IMPORTANTE: En Android, la ruta debe ser absoluta. flutter_tts coloca el archivo
-    // exactamente en la ruta indicada cuando se pasa una ruta absoluta.
-    debugPrint('[NativeTTS] Synthesizing to: $filePath');
-    final result = await _flutterTts.synthesizeToFile(text, filePath);
+    // 4. Sintetizar a archivo
+    // IMPORTANTE: En Android, pasar una ruta absoluta puede causar fallos de permisos (Scoped Storage)
+    // porque el motor de TTS del sistema corre en otro proceso y no puede escribir en nuestro tempDir.
+    // Al pasar solo el nombre del archivo, flutter_tts lo crea en el directorio externo seguro de la app:
+    // "Android/data/com.lector.ia/files/name.wav"
+    debugPrint('[NativeTTS] Synthesizing filename: $fileName');
+    final result = await _flutterTts.synthesizeToFile(text, fileName);
     debugPrint('[NativeTTS] synthesizeToFile result: $result');
 
-    // 5. Esperar a que el archivo esté disponible (máx 5 segundos)
-    int retries = 0;
-    while (retries < 50) {
-      if (await file.exists() && await file.length() > 100) {
-        debugPrint('[NativeTTS] File ready: $filePath (${await file.length()} bytes)');
-        return filePath;
+    // 5. Esperar a que el archivo esté disponible en el directorio externo de la app (máx 5 segundos)
+    final externalDir = await getExternalStorageDirectory();
+    if (externalDir != null) {
+      final externalFile = File('${externalDir.path}/$fileName');
+      int retries = 0;
+      while (retries < 50) {
+        if (await externalFile.exists() && await externalFile.length() > 100) {
+          debugPrint('[NativeTTS] File ready in external: ${externalFile.path} (${await externalFile.length()} bytes)');
+          // Copiar al cache temporal interno por consistencia
+          final copied = await externalFile.copy(filePath);
+          return copied.path;
+        }
+        await Future.delayed(const Duration(milliseconds: 100));
+        retries++;
       }
-      await Future.delayed(const Duration(milliseconds: 100));
-      retries++;
     }
 
-    // 6. En algunos dispositivos Android, flutter_tts guarda en getExternalStorageDirectory
-    try {
-      final externalDir = await getExternalStorageDirectory();
-      if (externalDir != null) {
-        final externalFile = File('${externalDir.path}/$fileName');
-        if (await externalFile.exists() && await externalFile.length() > 100) {
-          // Copiar al directorio temporal para tener ruta consistente
-          await externalFile.copy(filePath);
-          debugPrint('[NativeTTS] Copied from external: ${externalFile.path} → $filePath');
-          return filePath;
-        }
-      }
-    } catch (e) {
-      debugPrint('[NativeTTS] External dir check failed: $e');
+    // 6. Fallback final: verificar en tempDir directo si se creó ahí por compatibilidad
+    if (await file.exists() && await file.length() > 100) {
+      debugPrint('[NativeTTS] File ready in temp fallback: $filePath (${await file.length()} bytes)');
+      return filePath;
     }
 
     throw NativeTtsSynthesisException(
       'No se generó el archivo de audio TTS nativo.\n'
       'Verifica que el motor TTS del dispositivo tenga el idioma español instalado.\n'
-      'Ruta esperada: $filePath\n'
+      'Ruta buscada: ${externalDir?.path}/$fileName\n'
       'Resultado de síntesis: $result',
     );
   }

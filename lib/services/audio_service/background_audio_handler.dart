@@ -138,8 +138,24 @@ class LectorIaAudioHandler extends BaseAudioHandler with QueueHandler {
 
   @override
   Future<void> pause() async {
-    await _player.pause();
-    _sessionManager.abandonAudioFocus();
+    try {
+      // Actualizar inmediatamente el estado para evitar bloqueos en cargando
+      playbackState.add(playbackState.value.copyWith(
+        playing: false,
+        processingState: AudioProcessingState.ready,
+        controls: [
+          MediaControl.skipToPrevious,
+          MediaControl.play,
+          MediaControl.stop,
+          MediaControl.skipToNext,
+        ],
+      ));
+      await _player.pause();
+    } catch (e) {
+      debugPrint('[AudioHandler] Error in pause(): $e');
+    } finally {
+      _sessionManager.abandonAudioFocus();
+    }
   }
 
   @override
