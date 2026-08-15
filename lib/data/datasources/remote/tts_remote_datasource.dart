@@ -200,11 +200,33 @@ class TtsRemoteDatasource {
   }) async {
     const maxAttempts = 3;
 
-    final resolvedLanguage = languageCode.isEmpty ? 'es-ES' : languageCode;
-    final resolvedVoice = voiceName.isEmpty ? 'es-ES-Neural2-A' : voiceName;
+    // 1. Limpiar y sanitizar texto
+    final cleanedText = text
+        .replaceAll('\r\n', ' ')
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // 2. Sanitizar parámetros de voz
+    String resolvedLanguage = languageCode.trim();
+    if (resolvedLanguage.isEmpty) {
+      resolvedLanguage = 'es-ES';
+    } else if (resolvedLanguage.length == 2) {
+      // Convertir 'es' -> 'es-ES', 'en' -> 'en-US', etc.
+      if (resolvedLanguage == 'es') resolvedLanguage = 'es-ES';
+      else if (resolvedLanguage == 'en') resolvedLanguage = 'en-US';
+      else if (resolvedLanguage == 'fr') resolvedLanguage = 'fr-FR';
+      else if (resolvedLanguage == 'de') resolvedLanguage = 'de-DE';
+    }
+
+    String resolvedVoice = voiceName.trim();
+    if (resolvedVoice.isEmpty || !resolvedVoice.contains('-')) {
+      resolvedVoice = 'es-ES-Neural2-A';
+    }
 
     final body = {
-      'input': {'text': text},
+      'input': {'text': cleanedText},
       'voice': {
         'languageCode': resolvedLanguage,
         'name': resolvedVoice,
@@ -249,6 +271,13 @@ class TtsRemoteDatasource {
           apiKey: apiKey,
           attempt: attempt + 1,
         );
+      } else if (e.response?.statusCode == 400) {
+        final dynamic data = e.response?.data;
+        String errorMsg = 'Petición incorrecta (400) a Google Cloud TTS.';
+        if (data is Map) {
+          errorMsg = data['error']?['message']?.toString() ?? errorMsg;
+        }
+        throw ServerFailure(errorMsg, statusCode: 400);
       } else if (e.response?.statusCode == 403) {
         throw const ServerFailure('API Key inválida o sin permisos para TTS.', statusCode: 403);
       } else if (e.type == DioExceptionType.connectionTimeout ||

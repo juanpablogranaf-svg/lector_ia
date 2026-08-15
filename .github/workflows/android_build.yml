@@ -184,11 +184,17 @@ jobs:
           
           APK_NAME="LectorIA_v1.0.0_build${BUILD_NUM}_${BRANCH_CLEAN}_${DATE}.apk"
           
+          # Copia con nombre versionado para el registro histórico
           cp build/app/outputs/flutter-apk/app-debug.apk \
              "build/app/outputs/flutter-apk/${APK_NAME}"
           
+          # Copia con nombre limpio y genérico para Appetize.io
+          cp build/app/outputs/flutter-apk/app-debug.apk \
+             "build/app/outputs/flutter-apk/app-release.apk"
+          
           echo "APK_NAME=${APK_NAME}" >> $GITHUB_ENV
           echo "APK_PATH=build/app/outputs/flutter-apk/${APK_NAME}" >> $GITHUB_ENV
+          echo "APPETIZE_APK_PATH=build/app/outputs/flutter-apk/app-release.apk" >> $GITHUB_ENV
           
           # Mostrar tamaño del APK
           echo "📦 Tamaño del APK:"
@@ -198,8 +204,8 @@ jobs:
       - name: 📤 Subir APK como Artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: LectorIA-APK-build${{ github.run_number }}
-          path: ${{ env.APK_PATH }}
+          name: app-release
+          path: ${{ env.APPETIZE_APK_PATH }}
           retention-days: 30       # Disponible para descarga 30 días
           if-no-files-found: error  # Falla si no encuentra el APK
 

@@ -135,19 +135,23 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _initViewer(ReaderState state) {
-    final book = state.book!;
+    try {
+      final book = state.book!;
 
-    if (book.fileType == 'epub') {
-      _epubController = EpubController(
-        document: EpubDocument.openFile(File(book.filePath)),
-        epubCfi: null,
-      );
-      // Escuchar cambios de capítulo para extraer texto al Bloc
-      _epubController!.currentValueListenable.addListener(_onEpubChapterChanged);
-      // Precargar el EpubBook directamente para extracción de texto robusta
-      _loadEpubBookForTextExtraction(book.filePath);
-    } else if (book.fileType == 'pdf') {
-      _pdfController = pdfrx.PdfViewerController();
+      if (book.fileType == 'epub') {
+        _epubController = EpubController(
+          document: EpubDocument.openFile(File(book.filePath)),
+          epubCfi: null,
+        );
+        // Escuchar cambios de capítulo para extraer texto al Bloc
+        _epubController!.currentValueListenable.addListener(_onEpubChapterChanged);
+        // Precargar el EpubBook directamente para extracción de texto robusta
+        _loadEpubBookForTextExtraction(book.filePath);
+      } else if (book.fileType == 'pdf') {
+        _pdfController = pdfrx.PdfViewerController();
+      }
+    } catch (e) {
+      debugPrint('[ReaderPage] Error in _initViewer: $e');
     }
   }
 
@@ -327,28 +331,44 @@ class _ReaderPageState extends State<ReaderPage> {
           controller: _pdfController,
           params: pdfrx.PdfViewerParams(
             onDocumentChanged: (doc) {
-              if (doc != null) {
-                _pdfDocument = doc;
-                // Extraer texto de la primera página al cargar el documento
-                final initialPage = state.progress?.pageNumber != null
-                    ? state.progress!.pageNumber + 1
-                    : 1;
-                _extractAndSendPdfText(doc, initialPage);
+              try {
+                if (doc != null) {
+                  _pdfDocument = doc;
+                  // Extraer texto de la primera página al cargar el documento
+                  final initialPage = state.progress?.pageNumber != null
+                      ? state.progress!.pageNumber + 1
+                      : 1;
+                  _extractAndSendPdfText(doc, initialPage);
+                }
+              } catch (e) {
+                debugPrint('[ReaderPage] Error in onDocumentChanged: $e');
               }
             },
             onPageChanged: (pageNumber) {
-              if (pageNumber != null) {
-                final pageCount = _pdfController?.pageCount ?? 1;
-                context.read<ReaderBloc>().add(
-                  ReaderScrollPositionChanged(
-                    pageNumber / pageCount,
-                    pageNumber - 1,
-                  ),
-                );
-                // Extraer texto de la nueva página para TTS
-                if (_pdfDocument != null) {
-                  _extractAndSendPdfText(_pdfDocument!, pageNumber);
+              try {
+                if (pageNumber != null) {
+                  // Acceso seguro: preferir _pdfDocument.pages.length, luego _pdfController.pageCount
+                  int totalPages = 1;
+                  if (_pdfDocument != null) {
+                    totalPages = _pdfDocument!.pages.length;
+                  } else {
+                    totalPages = _pdfController?.pageCount ?? 1;
+                  }
+                  
+                  context.read<ReaderBloc>().add(
+                    ReaderScrollPositionChanged(
+                      pageNumber / totalPages,
+                      pageNumber - 1,
+                    ),
+                  );
+                  
+                  // Extraer texto de la nueva página para TTS de manera segura
+                  if (_pdfDocument != null) {
+                    _extractAndSendPdfText(_pdfDocument!, pageNumber);
+                  }
                 }
+              } catch (e) {
+                debugPrint('[ReaderPage] Error in onPageChanged: $e');
               }
             },
           ),
