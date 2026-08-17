@@ -421,13 +421,19 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
           }
         }
       } else {
-        // ── Modo Google Cloud TTS ─────────────────────────────────────────────
+        // ── Modo Google Cloud TTS ────────────────────────────────────────────────────
+        final selectedVoice = _prefs.getString(AppConstants.prefTtsVoice) ?? 'es-ES-Neural2-A';
+        // Derivar el languageCode del prefijo de la voz para garantizar coincidencia
+        // Ej: 'es-ES-Neural2-A' → 'es-ES', 'en-US-Neural2-C' → 'en-US'
+        final derivedLanguage = _deriveLanguageFromVoice(selectedVoice);
+
         final result = await _ttsDatasource.synthesizeChunk(
           chunk: chunk,
           bookId: state.book!.id,
           apiKey: apiKey,
           speakingRate: state.ttsSpeed,
-          voiceName: _prefs.getString(AppConstants.prefTtsVoice),
+          voiceName: selectedVoice,
+          languageCode: derivedLanguage,
         );
         pathsList.add(result.audioFilePath);
 
@@ -440,7 +446,8 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
               bookId: state.book!.id,
               apiKey: apiKey,
               speakingRate: state.ttsSpeed,
-              voiceName: _prefs.getString(AppConstants.prefTtsVoice),
+              voiceName: selectedVoice,
+              languageCode: derivedLanguage,
             );
             pathsList.add(r.audioFilePath);
           } catch (_) {
@@ -539,6 +546,17 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
   // Debounce para el scroll (guardar cada 500ms)
   EventTransformer<E> _debounce<E>({Duration duration = const Duration(milliseconds: 500)}) {
     return (events, mapper) => events.debounceTime(duration).switchMap(mapper);
+  }
+
+  /// Derivar el código de idioma BCP-47 del nombre de la voz de Google TTS.
+  /// Ej: 'es-ES-Neural2-A' → 'es-ES', 'en-US-Studio-O' → 'en-US'
+  String _deriveLanguageFromVoice(String voiceName) {
+    // Las voces de Google TTS tienen el formato: 'XX-XX-*' (idioma-región-*)
+    final parts = voiceName.split('-');
+    if (parts.length >= 2) {
+      return '${parts[0]}-${parts[1]}'; // ej: 'es-ES'
+    }
+    return 'es-ES'; // fallback por defecto
   }
 
   @override

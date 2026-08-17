@@ -99,13 +99,34 @@ class NativeTtsService {
     final nativeRate = (rate / 2.0).clamp(0.1, 1.0);
     await _flutterTts.setSpeechRate(nativeRate);
 
-    // 4. Sintetizar a archivo
+    // 4. Sanitizar el texto antes de sintetizarlo
+    // Limpieza esencial para el motor TTS nativo: elimina caracteres especiales,
+    // nulos y saltos de línea que pueden romper la síntesis en ciertos dispositivos
+    final sanitizedText = text
+        .replaceAll('\r\n', ' ')
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ')
+        .replaceAll('\x00', '')                          // Bytes nulos
+        .replaceAll(RegExp(r'[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]'), '') // Caracteres de control
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    
+    if (sanitizedText.isEmpty) {
+      throw NativeTtsSynthesisException('El texto a sintetizar está vacío después de la sanitización.');
+    }
+
+    // Truncar a 4000 caracteres si el texto es muy largo (límite seguro para el motor nativo)
+    final truncatedText = sanitizedText.length > 4000 
+        ? sanitizedText.substring(0, 4000)
+        : sanitizedText;
+
+    // 5. Sintetizar a archivo
     // IMPORTANTE: En Android, pasar una ruta absoluta puede causar fallos de permisos (Scoped Storage)
     // porque el motor de TTS del sistema corre en otro proceso y no puede escribir en nuestro tempDir.
     // Al pasar solo el nombre del archivo, flutter_tts lo crea en el directorio externo seguro de la app:
     // "Android/data/com.lector.ia/files/name.wav"
-    debugPrint('[NativeTTS] Synthesizing filename: $fileName');
-    final result = await _flutterTts.synthesizeToFile(text, fileName);
+    debugPrint('[NativeTTS] Synthesizing filename: $fileName (${truncatedText.length} chars)');
+    final result = await _flutterTts.synthesizeToFile(truncatedText, fileName);
     debugPrint('[NativeTTS] synthesizeToFile result: $result');
 
     // 5. Esperar a que el archivo esté disponible en el directorio externo de la app (máx 5 segundos)

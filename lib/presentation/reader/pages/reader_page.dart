@@ -24,6 +24,8 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _showControls = true;
   pdfrx.PdfDocument? _pdfDocument;
   epubx.EpubBook? _epubBook; // Cache del libro EPUB para extracción directa
+  bool _epubTextExtracted = false; // Bandera para evitar re-extracciones duplicadas
+  int? _lastEpubChapterNumber; // Último capítulo notificado por el listener
 
   @override
   void initState() {
@@ -162,10 +164,18 @@ class _ReaderPageState extends State<ReaderPage> {
       final bytes = await File(filePath).readAsBytes();
       _epubBook = await epubx.EpubReader.readBook(bytes);
       debugPrint('[ReaderPage] EpubBook loaded for text extraction: ${_epubBook?.Title}');
-      // Si ya hay un valor en el listener (el controlador ya cargó), extraer de inmediato
-      final currentValue = _epubController?.currentValueListenable.value;
-      if (currentValue != null) {
-        _extractAndSendEpubText(currentValue);
+      
+      // Si el listener ya disparó pero no pudo extraer texto (libro aún no cargado),
+      // intentamos ahora con el último capítulo notificado
+      if (!_epubTextExtracted) {
+        final currentValue = _epubController?.currentValueListenable.value;
+        if (currentValue != null) {
+          debugPrint('[ReaderPage] EpubBook ready, retrying extraction for pending chapter...');
+          _extractAndSendEpubText(currentValue);
+        } else if (_epubBook != null) {
+          // Extraer directamente el primer capítulo con texto
+          _extractFromEpubBookChapter(0);
+        }
       }
     } catch (e) {
       debugPrint('[ReaderPage] Error loading EpubBook for text extraction: $e');
@@ -176,6 +186,11 @@ class _ReaderPageState extends State<ReaderPage> {
   void _onEpubChapterChanged() {
     final value = _epubController?.currentValueListenable.value;
     if (value == null) return;
+    // Resetear flag cuando cambia de capítulo para permitir re-extracción
+    final newChapter = value.chapterNumber as int?;
+    if (newChapter != _lastEpubChapterNumber) {
+      _epubTextExtracted = false;
+    }
     _extractAndSendEpubText(value);
   }
 
@@ -201,6 +216,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
       if (plainText.isNotEmpty) {
         debugPrint('[ReaderPage] EPUB: extracted ${plainText.length} chars from paragraphs (chapter $chapterNumber)');
+        _epubTextExtracted = true;
+        _lastEpubChapterNumber = chapterNumber;
         if (mounted) context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
         return;
       }
@@ -208,11 +225,14 @@ class _ReaderPageState extends State<ReaderPage> {
       // Estrategia 2: extraer directamente del EpubBook si el widget no tiene párrafos
       final book = _epubBook;
       if (book != null) {
+        _lastEpubChapterNumber = chapterNumber;
         _extractFromEpubBookChapter(chapterNumber - 1);
         return;
       }
 
-      debugPrint('[ReaderPage] EPUB chapter $chapterNumber: no text from paragraphs and EpubBook not loaded yet.');
+      // EpubBook aún no cargado — guardar el número de capítulo para procesarlo cuando cargue
+      _lastEpubChapterNumber = chapterNumber;
+      debugPrint('[ReaderPage] EPUB chapter $chapterNumber: EpubBook not loaded yet, will retry when ready.');
     } catch (e) {
       debugPrint('[ReaderPage] EPUB text extraction error: $e');
       // Fallback al libro cargado si hay error
@@ -224,38 +244,40 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   /// Extrae texto directamente del HTML del capítulo desde el EpubBook.
+  /// Si el capítulo objetivo está vacío (portada, imagen), avanza al siguiente con texto.
   void _extractFromEpubBookChapter(int chapterIndex) {
     try {
       final book = _epubBook;
       if (book == null) return;
 
-      // Obtener todos los capítulos con contenido HTML
       final chapters = book.Chapters;
       if (chapters == null || chapters.isEmpty) return;
 
-      // Recopilar texto de este capítulo y sub-capítulos
-      final buffer = StringBuffer();
-
-      void extractChapterText(epubx.EpubChapter chapter) {
+      String extractChapterText(epubx.EpubChapter chapter) {
+        final buffer = StringBuffer();
         final htmlContent = chapter.HtmlContent ?? '';
         if (htmlContent.isNotEmpty) {
           buffer.write(_stripHtml(htmlContent));
           buffer.write('\n\n');
         }
         for (final sub in chapter.SubChapters ?? <epubx.EpubChapter>[]) {
-          extractChapterText(sub);
+          buffer.write(extractChapterText(sub));
+        }
+        return buffer.toString();
+      }
+
+      // Buscar desde el índice objetivo hasta el final hasta encontrar texto
+      final startIndex = chapterIndex.clamp(0, chapters.length - 1);
+      for (int i = startIndex; i < chapters.length; i++) {
+        final plainText = extractChapterText(chapters[i]).trim();
+        if (plainText.isNotEmpty && mounted) {
+          debugPrint('[ReaderPage] EPUB: extracted ${plainText.length} chars from EpubBook chapter $i');
+          _epubTextExtracted = true;
+          context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
+          return;
         }
       }
-
-      // Navegar al capítulo correcto por índice
-      final targetIndex = chapterIndex.clamp(0, chapters.length - 1);
-      extractChapterText(chapters[targetIndex]);
-
-      final plainText = buffer.toString().trim();
-      if (plainText.isNotEmpty && mounted) {
-        debugPrint('[ReaderPage] EPUB: extracted ${plainText.length} chars from EpubBook chapter $targetIndex');
-        context.read<ReaderBloc>().add(ReaderTextExtracted(plainText));
-      }
+      debugPrint('[ReaderPage] EPUB: no readable text found in any chapter from index $startIndex');
     } catch (e) {
       debugPrint('[ReaderPage] EpubBook chapter extraction error: $e');
     }
