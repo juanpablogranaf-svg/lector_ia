@@ -9,7 +9,7 @@ import 'services/audio_service/native_tts_service.dart';
 
 late AudioHandler audioHandler;
 
-void main() {
+void main() async {
   // ── 1. Captura global de errores de Flutter (widget tree, rendering, etc.)
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
