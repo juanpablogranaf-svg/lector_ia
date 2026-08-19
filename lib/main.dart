@@ -106,7 +106,10 @@ void main() {
           androidNotificationChannelId: 'com.lector.ia.audio',
           androidNotificationChannelName: 'LectorIA Audio',
           androidNotificationOngoing: true,
-          androidNotificationIcon: 'mipmap/ic_launcher',
+          // drawable/ic_notification es un vector monocromático (blanco/transparente).
+          // Android 5+ exige un small icon monocromático; mipmap/ic_launcher (color)
+          // causa java.lang.IllegalArgumentException: Invalid notification (no valid small icon).
+          androidNotificationIcon: 'drawable/ic_notification',
           androidShowNotificationBadge: true,
           notificationColor: Color(0xFF1A1A2E),
           androidStopForegroundOnPause: true,
