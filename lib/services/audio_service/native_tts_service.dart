@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -110,27 +111,46 @@ class NativeTtsService {
         .replaceAll(RegExp(r'[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]'), '') // Caracteres de control
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    
+
     if (sanitizedText.isEmpty) {
       throw NativeTtsSynthesisException('El texto a sintetizar está vacío después de la sanitización.');
     }
 
     // Truncar a 4000 caracteres si el texto es muy largo (límite seguro para el motor nativo)
-    final truncatedText = sanitizedText.length > 4000 
+    final truncatedText = sanitizedText.length > 4000
         ? sanitizedText.substring(0, 4000)
         : sanitizedText;
 
     // 5. Sintetizar a archivo con manejo de completado asíncrono
-    final completer = Completer<String>();
+    final completer = Completer<bool>();
+
     _flutterTts.setCompletionHandler(() {
-      if (!completer.isCompleted) completer.complete('completed');
+      if (!completer.isCompleted) completer.complete(true);
     });
+
+    _flutterTts.setErrorHandler((msg) {
+      debugPrint('[NativeTTS] Synthesis error: $msg');
+      if (!completer.isCompleted) completer.complete(false);
+    });
+
     debugPrint('[NativeTTS] Synthesizing filename: $fileName (${truncatedText.length} chars)');
     final result = await _flutterTts.synthesizeToFile(truncatedText, fileName);
-    // Esperar a que el motor indique completado
-    await completer.future;
+    debugPrint('[NativeTTS] synthesizeToFile result: $result');
 
-    // 5. Esperar a que el archivo esté disponible en el directorio externo de la app (máx 5 segundos)
+    if (result == 1) {
+      final success = await completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => false,
+      );
+      if (!success) {
+        throw NativeTtsSynthesisException(
+          'La síntesis TTS falló o superó el tiempo de espera.\n'
+          'Verifica que el motor TTS del dispositivo tenga el idioma español instalado.',
+        );
+      }
+    }
+
+    // 6. Esperar a que el archivo esté disponible en el directorio externo de la app (máx 5 segundos)
     final externalDir = await getExternalStorageDirectory();
     if (externalDir != null) {
       final externalFile = File('${externalDir.path}/$fileName');
@@ -147,7 +167,7 @@ class NativeTtsService {
       }
     }
 
-    // 6. Fallback final: verificar en tempDir directo si se creó ahí por compatibilidad
+    // 7. Fallback final: verificar en tempDir directo si se creó ahí por compatibilidad
     if (await file.exists() && await file.length() > 100) {
       debugPrint('[NativeTTS] File ready in temp fallback: $filePath (${await file.length()} bytes)');
       return filePath;
