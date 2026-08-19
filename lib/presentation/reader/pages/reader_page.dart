@@ -366,7 +366,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 debugPrint('[ReaderPage] Error in onDocumentChanged: $e');
               }
             },
-            onPageChanged: (pageNumber) {
+            onPageChanged: (int? pageNumber) {
               try {
                 if (pageNumber != null) {
                   // Acceso seguro: preferir _pdfDocument.pages.length, luego _pdfController.pageCount
