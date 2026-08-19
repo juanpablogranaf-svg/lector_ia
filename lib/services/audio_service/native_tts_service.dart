@@ -120,14 +120,15 @@ class NativeTtsService {
         ? sanitizedText.substring(0, 4000)
         : sanitizedText;
 
-    // 5. Sintetizar a archivo
-    // IMPORTANTE: En Android, pasar una ruta absoluta puede causar fallos de permisos (Scoped Storage)
-    // porque el motor de TTS del sistema corre en otro proceso y no puede escribir en nuestro tempDir.
-    // Al pasar solo el nombre del archivo, flutter_tts lo crea en el directorio externo seguro de la app:
-    // "Android/data/com.lector.ia/files/name.wav"
+    // 5. Sintetizar a archivo con manejo de completado asíncrono
+    final completer = Completer<String>();
+    _flutterTts.setCompletionHandler(() {
+      if (!completer.isCompleted) completer.complete('completed');
+    });
     debugPrint('[NativeTTS] Synthesizing filename: $fileName (${truncatedText.length} chars)');
     final result = await _flutterTts.synthesizeToFile(truncatedText, fileName);
-    debugPrint('[NativeTTS] synthesizeToFile result: $result');
+    // Esperar a que el motor indique completado
+    await completer.future;
 
     // 5. Esperar a que el archivo esté disponible en el directorio externo de la app (máx 5 segundos)
     final externalDir = await getExternalStorageDirectory();
