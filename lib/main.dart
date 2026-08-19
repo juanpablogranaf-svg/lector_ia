@@ -98,17 +98,18 @@ void main() {
       await NativeTtsService.instance.init();
       debugPrint('✅ [main] NativeTtsService listo.');
 
-      // ── Paso 2: AudioService (Foreground Service) — con timeout de seguridad
+      // ── Paso 2: AudioService (Foreground Service)
+      // Parámetros verificados contra audio_service ^0.18.15:
+      //   - androidNotificationIcon: recurso drawable monocromático (blanco/transparente).
+      //     Android 5+ requiere un small icon monocromático; mipmap/ic_launcher (color)
+      //     provoca: java.lang.IllegalArgumentException: Invalid notification (no valid small icon)
+      //   - androidNotificationOngoing: bool (no existe "androidOngoing")
       debugPrint('🚀 [main] Inicializando AudioService...');
       audioHandler = await AudioService.init(
         builder: () => LectorIaAudioHandler(),
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.lector.ia.audio',
           androidNotificationChannelName: 'LectorIA Audio',
-          // 'drawable/ic_notification': vector monocromático blanco/transparente.
-          // Android 5+ exige un small icon monocromático en drawable/.
-          // 'mipmap/ic_launcher' (ícono de color) causa:
-          //   java.lang.IllegalArgumentException: Invalid notification (no valid small icon)
           androidNotificationIcon: 'drawable/ic_notification',
           androidNotificationOngoing: true,
           androidShowNotificationBadge: true,
