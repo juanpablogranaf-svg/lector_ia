@@ -108,9 +108,10 @@ void main() async {
       audioHandler = await AudioService.init(
         builder: () => LectorIaAudioHandler(),
         config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.juanpa.reader_app.channel.audio',
-          androidNotificationChannelName: 'Reproducción de Audio',
-          androidOngoing: true,
+          androidNotificationChannelId: 'com.lector.ia.audio',
+          androidNotificationChannelName: 'LectorIA Audio',
+          androidNotificationOngoing: true,
+          androidStopForegroundOnPause: true,
         ),
       ).timeout(
         const Duration(seconds: 20),
