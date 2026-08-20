@@ -111,6 +111,7 @@ void main() async {
           androidNotificationChannelId: 'com.lector.ia.audio',
           androidNotificationChannelName: 'LectorIA Audio',
           androidNotificationOngoing: true,
+          androidNotificationIcon: 'mipmap/ic_launcher',
           androidStopForegroundOnPause: true,
         ),
       ).timeout(
