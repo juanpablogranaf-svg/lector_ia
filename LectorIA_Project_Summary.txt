@@ -1,0 +1,93 @@
+# CONTEXTO DEL PROYECTO: LECTORIA (APP MOVIL EN FLUTTER)
+Este documento está diseñado específicamente para servir como "System Prompt" o archivo de transferencia de contexto completo para otro modelo de IA que vaya a continuar el desarrollo, debugging o mantenimiento de LectorIA.
+
+---
+
+## 1. DESCRIPCIÓN GENERAL
+LectorIA es una aplicación móvil desarrollada en Flutter diseñada para la lectura de libros digitales y su reproducción en voz alta (Text-To-Speech - TTS).
+Soporta formatos:
+- TXT
+- EPUB
+- PDF
+
+El flujo principal de reproducción de audio se gestiona en segundo plano (Foreground Service) permitiendo escuchar la lectura con la pantalla del dispositivo bloqueada o utilizando otras aplicaciones.
+
+---
+
+## 2. ARQUITECTURA Y TECNOLOGÍAS
+- **Patrón de Estado:** Bloc (usando `flutter_bloc` y `rxdart` para reactividad y debounces).
+- **Gestor de Audio:** `just_audio` (reproducción de archivos locales).
+- **Servicio en Segundo Plano:** `audio_service` (integración con el sistema operativo Android/iOS, notificaciones multimedia, controles de bloqueo).
+- **Localización / Inyección de Dependencias:** `get_it`.
+- **API TTS Online:** Google Cloud Text-to-Speech API.
+- **API TTS Offline / Local:** Motor nativo del sistema operativo via `flutter_tts`.
+- **Parsing de Documentos:**
+  - `epub_view` y `epubx` para archivos EPUB.
+  - `pdfrx` para archivos PDF.
+
+---
+
+## 3. COMPONENTES CLAVE Y LÓGICA DE NEGOCIO
+
+### A. Inicialización del Servicio de Audio (`lib/main.dart`)
+Configura e inicia `AudioService` con su respectivo handler `LectorIaAudioHandler`.
+- **Configuración Crítica de Notificación (Android 5+):** 
+  Para evitar excepciones de tipo `IllegalArgumentException: Invalid notification (no valid small icon)`, se usa `'mipmap/ic_launcher'`. Adicionalmente, el manifest (`AndroidManifest.xml`) define metadatos para resolver el icono por defecto en notificaciones.
+- **Configuración del Handler:**
+  ```dart
+  config: const AudioServiceConfig(
+    androidNotificationChannelId: 'com.lector.ia.audio',
+    androidNotificationChannelName: 'LectorIA Audio',
+    androidNotificationOngoing: true,
+    androidNotificationIcon: 'mipmap/ic_launcher',
+    androidStopForegroundOnPause: true,
+  )
+  ```
+
+### B. Gestor de Audio en Segundo Plano (`lib/services/audio_service/background_audio_handler.dart`)
+- Implementa `BaseAudioHandler` con el mixin `QueueHandler`.
+- Controla el ciclo de vida del reproductor (`just_audio`) comunicándolo con el sistema operativo.
+- Expone controles para Play, Pause, Anterior/Siguiente párrafo, y Stop.
+- Emite eventos a través de `currentChunkStream` para mantener sincronizada la interfaz de usuario con el fragmento de texto que se está leyendo.
+
+### C. Motor TTS Nativo / Offline (`lib/services/audio_service/native_tts_service.dart`)
+- Utiliza la biblioteca `flutter_tts` para generar archivos de audio de forma local.
+- **Sincronización Asíncrona (Completer):** La síntesis nativa es asíncrona por naturaleza pero el motor de audio necesita esperar a que el archivo `.wav` se escriba por completo antes de reproducirlo. Se implementa un patrón `Completer<bool>` con `setCompletionHandler` y `setErrorHandler` para esperar de manera segura hasta 10 segundos antes de dar el archivo por listo.
+- **Sanitización del Texto:** Antes de sintetizar, se limpia el texto eliminando bytes nulos (`\x00`), caracteres de control ASCII (`[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]`) y saltos de línea excesivos. El texto se limita a un máximo de 4000 caracteres para evitar desbordes en el motor nativo del dispositivo.
+
+### D. Motor TTS Remoto / Google Cloud (`lib/data/datasources/remote/tts_remote_datasource.dart`)
+- **Limpia y codifica el texto** de entrada antes de enviarlo por POST a la API de Google Cloud TTS.
+- **Mapeo de Idiomas:** Deriva de forma dinámica el `languageCode` necesario según la voz seleccionada (ej. `es-ES-Neural2-A` -> `es-ES`) para prevenir discrepancias del tipo *"Requested language code 'en-US' doesn't match..."*.
+- **Configuración de Audio (Payload):** Forza de manera estricta la codificación a `"audioEncoding": "MP3"`.
+- **Resiliencia & Rate Limiting:** Implementa una cola interna (`_requestQueue`) para limitar las peticiones concurrentes a 1 sola, y aplica reintentos con retraso exponencial (Exponential Backoff) ante errores HTTP 429 (Too Many Requests).
+
+### E. Vista de Lectura y Extracción de Texto (`lib/presentation/reader/pages/reader_page.dart`)
+- **PDF Viewer (`pdfrx`):**
+  - Implementa la firma correcta de `onPageChanged` con tipo explícito `int? pageNumber` (`onPageChanged: (int? pageNumber) { ... }`).
+  - No utiliza parámetros erróneos como `page:`. En su lugar, inicializa con `initialPageNumber` y navega programáticamente mediante el `PdfViewerController.goToPage()`.
+  - Extrae el texto de la página visualizada actual enviándolo al `ReaderBloc` con `ReaderTextExtracted`.
+- **EPUB Viewer (`epub_view`):**
+  - Utiliza un listener sobre el controlador del EPUB (`_epubController.currentValueListenable`).
+  - Extrae el HTML del capítulo y remueve las etiquetas correspondientes (`_stripHtml`) para proveer texto plano al motor TTS.
+
+### F. Estado de Lectura (`lib/presentation/reader/bloc/reader_bloc.dart`)
+- Controla el flujo del reproductor: maneja transiciones entre estados (idle, loading, playing, paused, error).
+- Asegura que cualquier fallo o excepción de red / TTS cambie el estado de la UI a `TtsStatus.error` con un mensaje claro en lugar de dejar la pantalla congelada en "cargando".
+- Modela el progreso de lectura con `ReadingProgressModel` que rastrea de manera segura campos clave como `pageNumber`, `chapterIndex`, `scrollPosition` y `chunkIndex`.
+
+---
+
+## 4. HISTORIAL DE ERRORES RESUELTOS (CRITICAL LOG)
+Si heredas este proyecto, ten en cuenta los siguientes problemas históricos resueltos para no reintroducirlos:
+1. **IllegalArgumentException: Invalid notification (no valid small icon)**
+   - *Causa:* Se intentaba usar iconos inexistentes en el drawable o iconos a color como launcher en notificaciones del sistema.
+   - *Solución:* Se forzó el uso de `mipmap/ic_launcher` en la configuración de `AudioServiceConfig` en `main.dart` y se añadieron metadatos de respaldo en el `AndroidManifest.xml`.
+2. **Conflicto de Idiomas Google Cloud TTS**
+   - *Causa:* Se enviaba por defecto el idioma `en-US` con voces en español, resultando en respuestas 400 Bad Request.
+   - *Solución:* El idioma se extrae directamente del prefijo del nombre de la voz seleccionada (ej. `es-ES-Neural2-A` -> `es-ES`).
+3. **El audio local sonaba robótico o cortado (Modo Offline)**
+   - *Causa:* El reproductor de audio intentaba leer el archivo `.wav` mientras el motor nativo del dispositivo aún lo estaba escribiendo.
+   - *Solución:* Se estructuró un `Completer` en `NativeTtsService` que detiene el hilo de ejecución hasta recibir la confirmación de escritura completa (`setCompletionHandler`) de `flutter_tts`.
+4. **Errores de compilación por parámetros inexistentes en la inicialización**
+   - *Causa:* El parámetro `androidOngoing` no existe en la especificación de `AudioServiceConfig` para la versión actual.
+   - *Solución:* Fue reemplazado por `androidNotificationOngoing` en `main.dart`.
